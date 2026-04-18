@@ -62,11 +62,13 @@ function checkSystemStatus() {
         $db = $codePay->getDb();
         $orderCount = $db->count('codepay_orders');
         $unpaidCount = $db->count('codepay_orders', ['status' => 0]);
+        $expiredStatusCount = $db->count('codepay_orders', ['status' => 2]);
         
         $status['services']['database'] = [
             'status' => 'healthy',
             'total_orders' => $orderCount,
-            'unpaid_orders' => $unpaidCount
+            'unpaid_orders' => $unpaidCount,
+            'expired_orders' => $expiredStatusCount
         ];
         
         // 2. 检查支付宝API
@@ -85,10 +87,11 @@ function checkSystemStatus() {
         
         // 查询即将过期的订单数量
         $expiredThreshold = date('Y-m-d H:i:s', time() - $orderTimeout);
-        $expiredCount = $db->count('codepay_orders', [
+        $staleUnpaidCount = $db->count('codepay_orders', [
             'status' => 0,
             'add_time[<]' => $expiredThreshold
         ]);
+        $expiredCount = $expiredStatusCount + $staleUnpaidCount;
         
         $status['services']['order_cleanup'] = [
             'status' => $autoCleanup ? 'enabled' : 'disabled',
@@ -256,18 +259,18 @@ function generateSmartSuggestions($monitorStatus, $unpaidCount, $expiredCount, $
     // 监控服务建议
     switch ($monitorStatus['status']) {
         case 'error':
-            $suggestions[] = "❌ Monitoring service has errors. Check logs and call /health.php?action=force-start to restart.";
+            $suggestions[] = "监控服务出现错误，请查看日志后重新触发一次监控。";
             break;
         case 'unknown':
         case 'dormant':
-            $suggestions[] = "⚠️ Monitoring service is not active. Call /health.php?action=force-start to start it.";
+            $suggestions[] = "监控功能正常，但当前还没有运行记录。可以在管理页手动触发一次账单轮询。";
             break;
         case 'stale':
-            $suggestions[] = "⏰ Monitoring service is stale (last run: {$monitorStatus['last_run']}). Consider restarting.";
+            $suggestions[] = "监控服务较久未运行，上次运行时间：{$monitorStatus['last_run']}。";
             break;
         case 'running':
             if ($monitorStatus['health_score'] < 80) {
-                $suggestions[] = "📊 Monitoring service is running but health score is low ({$monitorStatus['health_score']}%).";
+                $suggestions[] = "监控服务正在运行，当前健康评分为 {$monitorStatus['health_score']}%。";
             }
             break;
         case 'healthy':
@@ -291,7 +294,7 @@ function generateSmartSuggestions($monitorStatus, $unpaidCount, $expiredCount, $
     
     // 性能建议
     if ($monitorStatus['health_score'] === 100 && $unpaidCount < 5 && $expiredCount < 2) {
-        $suggestions[] = "✅ System is performing excellently! All services are healthy.";
+        $suggestions[] = "系统运行良好，服务状态正常。";
     }
     
     return $suggestions;

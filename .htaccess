@@ -1,0 +1,16 @@
+DirectoryIndex index.php index.html
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Never expose source control, runtime data, logs, dependencies, or secrets.
+    RewriteRule ^(\.git|\.claude|config|data|logs|vendor|tests)(/|$) - [F,L]
+    RewriteRule ^codepay$ - [F,L]
+    RewriteRule (^|/)(composer\.(json|lock)|\.env.*|login_attempts\.json)$ - [F,L]
+    RewriteRule \.(db|sqlite|sqlite3|log|lock)$ - [F,L]
+</IfModule>
+
+<FilesMatch "^(\.env.*|composer\.(json|lock)|login_attempts\.json)$">
+    Require all denied
+</FilesMatch>

@@ -710,6 +710,7 @@ try {
             $pid = $_GET['pid'] ?? $_POST['pid'] ?? '';
             $key = $_GET['key'] ?? $_POST['key'] ?? '';
             $outTradeNo = $_GET['out_trade_no'] ?? $_POST['out_trade_no'] ?? '';
+            $statusToken = $_GET['status_token'] ?? $_POST['status_token'] ?? '';
             
             if (empty($pid) || empty($outTradeNo)) {
                 ob_end_clean();
@@ -721,9 +722,18 @@ try {
                 exit;
             }
             
-            // Allow keyless query for frontend status check
+            // Merchant queries use key; payment-page polling uses an order-scoped token.
             $validateKey = !empty($key);
-            $result = $codePay->queryOrder($pid, $key, $outTradeNo, $validateKey);
+            if (!$validateKey && empty($statusToken)) {
+                ob_end_clean();
+                http_response_code(400);
+                echo json_encode([
+                    'code' => -1,
+                    'msg' => 'Missing required parameter: status_token'
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+            $result = $codePay->queryOrder($pid, $key, $outTradeNo, $validateKey, $statusToken);
             break;
 
         case 'orders':

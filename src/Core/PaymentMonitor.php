@@ -12,6 +12,9 @@ class PaymentMonitor
     private $logger;
     private $db;
     private $codepay_config;
+    private $maxWaitTime = 300;
+    private $checkInterval = 3;
+    private $queryHoursBack = 24;
     
     public function __construct(BillQuery $billQuery, Medoo $db, array $codepay_config)
     {
@@ -611,20 +614,22 @@ class PaymentMonitor
                 'timeout_seconds' => $timeoutSeconds
             ]);
             
-            // 删除过期订单
-            $deletedCount = $this->db->delete('codepay_orders', [
+            // 标记过期订单，保留记录供后台查询和审计。
+            $updated = $this->db->update('codepay_orders', [
+                'status' => 2
+            ], [
                 'status' => 0,
                 'add_time[<]' => $expiredTime
             ]);
             
             $this->logger->info('Expired orders cleanup completed.', [
-                'deleted_count' => $deletedCount,
+                'expired_count' => $updated->rowCount(),
                 'expired_time_threshold' => $expiredTime
             ]);
             
-            // 记录被删除的订单详情（用于调试）
+            // 记录被标记过期的订单详情（用于调试）
             foreach ($expiredOrders as $order) {
-                $this->logger->debug('Expired order deleted.', [
+                $this->logger->debug('Expired order marked.', [
                     'order_id' => $order['id'],
                     'out_trade_no' => $order['out_trade_no'],
                     'created_time' => $order['add_time'],

@@ -12,10 +12,18 @@ use AliMPay\Utils\Logger;
 class QRCodeGenerator
 {
     private $logger;
+    private $config;
     
-    public function __construct()
+    public function __construct(array $config = [])
     {
         $this->logger = Logger::getInstance();
+        $this->config = $config ?: $this->loadConfig();
+    }
+
+    private function loadConfig(): array
+    {
+        $configPath = __DIR__ . '/../../config/alipay.php';
+        return file_exists($configPath) ? require $configPath : [];
     }
     
     /**
@@ -220,13 +228,16 @@ class QRCodeGenerator
      * @param string $text
      * @return string
      */
-    public function generate(string $text): string
+    public function generate(string $text, ?int $size = null, ?int $margin = null): string
     {
+        $size = $size ?? (int)($this->config['payment']['qr_code_size'] ?? 200);
+        $margin = $margin ?? (int)($this->config['payment']['qr_code_margin'] ?? 10);
+
         $result = Builder::create()
             ->writer(new PngWriter())
             ->data($text)
-            ->size(200)
-            ->margin(10)
+            ->size(max(120, min($size, 800)))
+            ->margin(max(0, min($margin, 50)))
             ->build();
 
         // 获取二维码图片内容并转为base64

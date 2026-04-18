@@ -24,8 +24,24 @@ try {
         'sign_type' => $requestData['sign_type'] ?? 'MD5'
     ];
     
-    // 如果是直接从api.php重定向而来，参数可能在POST中
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($requestData['payment_result'])) {
+    // 后台订单列表打开已有订单支付页，不重新创建订单
+    if (!empty($requestData['resume_payment'])) {
+        $codePay = new CodePay();
+        $result = $codePay->getExistingPaymentPageData(
+            (string)($requestData['out_trade_no'] ?? ''),
+            (string)($requestData['status_token'] ?? '')
+        );
+        $params = array_merge($params, [
+            'pid' => $result['pid'] ?? $params['pid'],
+            'type' => $result['type'] ?? $params['type'],
+            'out_trade_no' => $result['out_trade_no'] ?? $params['out_trade_no'],
+            'notify_url' => $result['notify_url'] ?? $params['notify_url'],
+            'return_url' => $result['return_url'] ?? $params['return_url'],
+            'name' => $result['name'] ?? $params['name'],
+            'money' => $result['money'] ?? $params['money'],
+            'sitename' => $result['sitename'] ?? $params['sitename']
+        ]);
+    } elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($requestData['payment_result'])) {
         $result = json_decode($requestData['payment_result'], true);
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new Exception('无效的支付结果数据');
@@ -57,10 +73,27 @@ try {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>码支付 - 支付宝支付</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                background-color: #f5f5f5;
+	        <style>
+	            @keyframes fadeUp {
+	                from { opacity: 0; transform: translateY(12px); }
+	                to { opacity: 1; transform: translateY(0); }
+	            }
+	            @keyframes qrReady {
+	                from { opacity: 0; transform: scale(0.96); }
+	                to { opacity: 1; transform: scale(1); }
+	            }
+	            @keyframes waitingPulse {
+	                0%, 100% { box-shadow: 0 0 0 0 rgba(212, 107, 8, 0.18); }
+	                50% { box-shadow: 0 0 0 8px rgba(212, 107, 8, 0); }
+	            }
+	            @keyframes successPop {
+	                0% { transform: scale(0.98); }
+	                60% { transform: scale(1.03); }
+	                100% { transform: scale(1); }
+	            }
+	            body {
+	                font-family: Arial, sans-serif;
+	                background-color: #f5f5f5;
                 margin: 0;
                 padding: 20px;
             }
@@ -68,10 +101,11 @@ try {
                 max-width: 500px;
                 margin: 0 auto;
                 background: white;
-                border-radius: 10px;
-                padding: 30px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            }
+	                border-radius: 10px;
+	                padding: 30px;
+	                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+	                animation: fadeUp 240ms ease-out both;
+	            }
             .header {
                 text-align: center;
                 margin-bottom: 30px;
@@ -117,9 +151,15 @@ try {
                 background: #fff;
                 border-radius: 8px;
                 box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-                overflow: hidden;
-                position: relative;
-            }
+	                overflow: hidden;
+	                position: relative;
+	                animation: qrReady 260ms ease-out both;
+	                transition: transform 180ms ease, box-shadow 180ms ease;
+	            }
+	            .qr-code .qr-img-wrapper:hover {
+	                transform: translateY(-2px);
+	                box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+	            }
             .qr-code img {
                 width: 100%;
                 height: 100%;
@@ -160,20 +200,26 @@ try {
                 text-align: center;
                 margin-top: 30px;
             }
-            .btn {
-                background: #1677ff;
-                color: white;
+	            .btn {
+	                background: #1677ff;
+	                color: white;
                 border: none;
                 padding: 10px 20px;
                 border-radius: 5px;
                 cursor: pointer;
                 margin: 0 10px;
-                text-decoration: none;
-                display: inline-block;
-            }
-            .btn:hover {
-                background: #0958d9;
-            }
+	                text-decoration: none;
+	                display: inline-block;
+	                transition: transform 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+	            }
+	            .btn:hover {
+	                background: #0958d9;
+	                transform: translateY(-1px);
+	                box-shadow: 0 6px 14px rgba(22, 119, 255, 0.18);
+	            }
+	            .btn:active {
+	                transform: translateY(0);
+	            }
             .btn-secondary {
                 background: #f5f5f5;
                 color: #666;
@@ -189,15 +235,17 @@ try {
                 font-weight: bold;
             }
             .status.pending {
-                background: #fff7e6;
-                color: #d46b08;
-                border: 1px solid #ffd591;
-            }
-            .status.success {
-                background: #f6ffed;
-                color: #52c41a;
-                border: 1px solid #b7eb8f;
-            }
+	                background: #fff7e6;
+	                color: #d46b08;
+	                border: 1px solid #ffd591;
+	                animation: waitingPulse 1800ms ease-in-out infinite;
+	            }
+	            .status.success {
+	                background: #f6ffed;
+	                color: #52c41a;
+	                border: 1px solid #b7eb8f;
+	                animation: successPop 240ms ease-out both;
+	            }
             .status.expired {
                 background: #f5f5f5;
                 color: #8c8c8c;
@@ -310,7 +358,15 @@ try {
         </div>
 
         <script>
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations()
+                    .then(registrations => registrations.forEach(registration => registration.unregister()))
+                    .catch(() => {});
+            }
+
             let countdownInterval;
+            let statusInterval;
+            let orderFinished = false;
             
             function startCountdown(duration) {
                 let timer = duration, minutes, seconds;
@@ -327,7 +383,9 @@ try {
                     display.textContent = minutes + ":" + seconds;
 
                     if (--timer < 0) {
+                        orderFinished = true;
                         clearInterval(countdownInterval);
+                        clearInterval(statusInterval);
                         document.getElementById('paymentStatus').textContent = '订单已超时';
                         document.getElementById('paymentStatus').className = 'status expired';
                         countdownDisplay.textContent = '订单已过期，请重新下单';
@@ -337,25 +395,45 @@ try {
             }
 
             function checkOrderStatus() {
+                if (orderFinished) {
+                    return;
+                }
+
                 const statusElement = document.getElementById('paymentStatus');
-                const outTradeNo = '<?php echo htmlspecialchars($result['out_trade_no']); ?>';
-                const pid = '<?php echo htmlspecialchars($result['pid']); ?>';
+                const outTradeNo = <?php echo json_encode($result['out_trade_no'] ?? '', JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+                const pid = <?php echo json_encode($result['pid'] ?? '', JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+                const statusToken = <?php echo json_encode($result['status_token'] ?? '', JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
 
                 statusElement.textContent = '正在查询订单状态...';
 
-                fetch('/api.php?action=order&out_trade_no=' + outTradeNo + '&pid=' + pid)
+                const query = new URLSearchParams({
+                    action: 'order',
+                    out_trade_no: outTradeNo,
+                    pid: pid,
+                    status_token: statusToken
+                });
+
+                fetch('/api.php?' + query.toString())
                     .then(response => response.json())
                     .then(data => {
                         if (data.code === 1 && data.status === 1) {
+                            orderFinished = true;
                             statusElement.textContent = '支付成功';
                             statusElement.className = 'status success';
-                            clearInterval(countdownInterval); // Stop countdown
+                            clearInterval(countdownInterval);
+                            clearInterval(statusInterval);
                             
                             // Redirect to return_url if available
                             const returnUrl = '<?php echo htmlspecialchars($params['return_url']); ?>';
                             if (returnUrl) {
                                 window.location.href = returnUrl;
                             }
+                        } else if (data.code === 1 && data.status === 2) {
+                            orderFinished = true;
+                            statusElement.textContent = '订单已过期';
+                            statusElement.className = 'status expired';
+                            clearInterval(countdownInterval);
+                            clearInterval(statusInterval);
                         } else if (data.code === 1 && data.status === 0) {
                             statusElement.textContent = '等待支付...';
                             statusElement.className = 'status pending';
@@ -373,7 +451,7 @@ try {
             startCountdown(300); // 5 minutes
 
             // Periodically check order status every 5 seconds
-            setInterval(checkOrderStatus, 5000);
+            statusInterval = setInterval(checkOrderStatus, 5000);
             
             // Initial check
             checkOrderStatus();

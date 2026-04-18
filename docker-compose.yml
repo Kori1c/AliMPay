@@ -1,0 +1,14 @@
+services:
+  alimpay:
+    build: .
+    container_name: alimpay-app
+    ports:
+      - "8080:80"
+    volumes:
+      - ./config:/var/www/html/config
+      - ./data:/var/www/html/data
+      - ./logs:/var/www/html/logs
+      - ./qrcode:/var/www/html/qrcode
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai

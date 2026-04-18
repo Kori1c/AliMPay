@@ -10,10 +10,12 @@ class Logger
 {
     private static $instance = null;
     private $logger = null;
+    private $config = [];
     
     private function __construct()
     {
         $this->logger = new MonologLogger('AliMPay');
+        $this->config = $this->loadConfig();
         
         // Create logs directory if it doesn't exist
         $logDir = __DIR__ . '/../../logs';
@@ -27,8 +29,10 @@ class Logger
             'Y-m-d H:i:s'
         );
 
+        $level = $this->resolveLevel($this->config['log']['level'] ?? 'debug');
+
         // Handler for INFO level and above, goes to info.log
-        $infoHandler = new StreamHandler($logDir . '/info.log', MonologLogger::INFO);
+        $infoHandler = new StreamHandler($logDir . '/info.log', max($level, MonologLogger::INFO));
         $infoHandler->setFormatter($formatter);
 
         // Handler for ERROR level and above, goes to error.log
@@ -38,12 +42,31 @@ class Logger
 
         // Handler for all levels (including DEBUG), goes to debug.log
         // Useful for deep debugging, but can be verbose.
-        $debugHandler = new StreamHandler($logDir . '/debug.log', MonologLogger::DEBUG);
+        $debugHandler = new StreamHandler($logDir . '/debug.log', $level);
         $debugHandler->setFormatter($formatter);
         
         $this->logger->pushHandler($infoHandler);
         $this->logger->pushHandler($errorHandler);
         $this->logger->pushHandler($debugHandler);
+    }
+
+    private function loadConfig(): array
+    {
+        $configPath = __DIR__ . '/../../config/alipay.php';
+        return file_exists($configPath) ? require $configPath : [];
+    }
+
+    private function resolveLevel(string $level): int
+    {
+        $levels = [
+            'debug' => MonologLogger::DEBUG,
+            'info' => MonologLogger::INFO,
+            'warning' => MonologLogger::WARNING,
+            'error' => MonologLogger::ERROR,
+            'critical' => MonologLogger::CRITICAL,
+        ];
+
+        return $levels[strtolower($level)] ?? MonologLogger::DEBUG;
     }
     
     public static function getInstance(): self

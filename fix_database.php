@@ -1,7 +1,7 @@
 <?php
 /**
  * 数据库修复脚本
- * 为现有数据库添加payment_amount字段
+ * 为现有数据库添加缺失字段
  */
 
 // 数据库文件路径
@@ -18,16 +18,19 @@ try {
     $pdo = new PDO("sqlite:$dbFile");
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     
-    // 检查payment_amount字段是否存在
+    // 检查字段是否存在
     $stmt = $pdo->prepare("PRAGMA table_info(codepay_orders)");
     $stmt->execute();
     $columns = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     $hasPaymentAmount = false;
+    $hasStatusToken = false;
     foreach ($columns as $column) {
         if ($column['name'] === 'payment_amount') {
             $hasPaymentAmount = true;
-            break;
+        }
+        if ($column['name'] === 'status_token') {
+            $hasStatusToken = true;
         }
     }
     
@@ -43,6 +46,13 @@ try {
     } else {
         echo "ℹ️  payment_amount字段已存在，无需修复\n";
     }
+
+    if (!$hasStatusToken) {
+        $pdo->exec("ALTER TABLE codepay_orders ADD COLUMN status_token VARCHAR(64)");
+        echo "✅ 成功添加status_token字段\n";
+    } else {
+        echo "ℹ️  status_token字段已存在，无需修复\n";
+    }
     
     // 显示表结构
     echo "\n当前表结构:\n";
@@ -51,7 +61,7 @@ try {
     }
     
     // 如果字段是新添加的，再次显示更新后的结构
-    if (!$hasPaymentAmount) {
+    if (!$hasPaymentAmount || !$hasStatusToken) {
         echo "\n更新后的表结构:\n";
         $stmt = $pdo->prepare("PRAGMA table_info(codepay_orders)");
         $stmt->execute();

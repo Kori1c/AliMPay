@@ -12,6 +12,7 @@ class BillQuery
     private $alipayClient;
     private $logger;
     private $apiInstance;
+    private $config;
     
     public function __construct(AlipayClient $alipayClient = null)
     {
@@ -19,6 +20,7 @@ class BillQuery
         date_default_timezone_set('Asia/Shanghai');
         
         $this->alipayClient = $alipayClient ?: new AlipayClient();
+        $this->config = $this->alipayClient->getConfig();
         $this->logger = Logger::getInstance();
         $this->initializeApiInstance();
     }
@@ -46,6 +48,11 @@ class BillQuery
         int $pageSize = 2000
     ): array {
         try {
+            $defaultPageSize = (int)($this->config['bill_query']['default_page_size'] ?? 2000);
+            if ($pageSize === 2000 && $defaultPageSize > 0) {
+                $pageSize = $defaultPageSize;
+            }
+
             // Validate configuration
             if (!$this->alipayClient->validateConfig()) {
                 throw new \Exception('Invalid Alipay configuration');
@@ -163,15 +170,18 @@ class BillQuery
             throw new \InvalidArgumentException('Page number must be greater than 0');
         }
         
-        if ($pageSize < 1 || $pageSize > 2000) {
-            throw new \InvalidArgumentException('Page size must be between 1 and 2000');
+        $maxPageSize = (int)($this->config['bill_query']['max_page_size'] ?? 2000);
+        $maxPageSize = max(1, min($maxPageSize, 2000));
+        if ($pageSize < 1 || $pageSize > $maxPageSize) {
+            throw new \InvalidArgumentException("Page size must be between 1 and {$maxPageSize}");
         }
     }
     
     private function isValidDateTime(string $dateTime): bool
     {
-        $d = \DateTime::createFromFormat('Y-m-d H:i:s', $dateTime);
-        return $d && $d->format('Y-m-d H:i:s') === $dateTime;
+        $format = $this->config['bill_query']['date_format'] ?? 'Y-m-d H:i:s';
+        $d = \DateTime::createFromFormat($format, $dateTime);
+        return $d && $d->format($format) === $dateTime;
     }
     
     private function formatResult($result): array

@@ -81,7 +81,9 @@ class CodePay
                 'created_at' => date('Y-m-d H:i:s'),
                 'status' => 1,
                 'balance' => '0.00',
-                'rate' => '96'
+                'rate' => '96',
+                'admin_password_hash' => password_hash('admin', PASSWORD_DEFAULT),
+                'admin_password_is_default' => true
             ];
             
             file_put_contents($this->configFile, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
@@ -97,8 +99,7 @@ class CodePay
         $databaseFile = __DIR__ . '/../../data/codepay.db';
         $this->db = new \Medoo\Medoo([
             'database_type' => 'sqlite',
-            'database_file' => $databaseFile,
-            'database_name' => 'codepay'
+            'database_name' => $databaseFile
         ]);
         $this->logger->info('Database initialized.', ['file' => $databaseFile]);
 
@@ -117,17 +118,21 @@ class CodePay
                 pay_time DATETIME,
                 notify_url VARCHAR(255),
                 return_url VARCHAR(255),
+                status_token VARCHAR(64),
                 sitename VARCHAR(255)
             );
         ");
         
-        // 检查表结构，确保payment_amount字段存在
+        // 检查表结构，确保新增字段存在
         $columns = $this->db->query("PRAGMA table_info(codepay_orders);")->fetchAll();
         $hasPaymentAmount = false;
+        $hasStatusToken = false;
         foreach ($columns as $column) {
             if ($column['name'] === 'payment_amount') {
                 $hasPaymentAmount = true;
-                break;
+            }
+            if ($column['name'] === 'status_token') {
+                $hasStatusToken = true;
             }
         }
         
@@ -135,8 +140,16 @@ class CodePay
             $this->db->exec("ALTER TABLE codepay_orders ADD COLUMN payment_amount DECIMAL(10, 2) DEFAULT 0");
             $this->logger->info('Added payment_amount column to existing table.');
         }
+
+        if (!$hasStatusToken) {
+            $this->db->exec("ALTER TABLE codepay_orders ADD COLUMN status_token VARCHAR(64)");
+            $this->logger->info('Added status_token column to existing table.');
+        }
         
-        $this->logger->info('Database table codepay_orders initialized.', ['has_payment_amount' => $hasPaymentAmount]);
+        $this->logger->info('Database table codepay_orders initialized.', [
+            'has_payment_amount' => $hasPaymentAmount,
+            'has_status_token' => $hasStatusToken
+        ]);
     }
     
     /**
@@ -216,16 +229,17 @@ class CodePay
                 ];
             }
 
+            $merchantConfig = $this->loadMerchantConfig();
             $response = [
                 'code' => 1,
                 'pid' => (int)$this->merchantId,
                 'key' => $this->merchantKey,
                 'qq' => null,
-                'active' => 1,
-                'money' => '0.00',
+                'active' => (int)($merchantConfig['status'] ?? 1),
+                'money' => number_format((float)($merchantConfig['balance'] ?? 0), 2, '.', ''),
                 'account' => $this->config['transfer_user_id'] ?? 'Not Set',
                 'username' => 'Merchant',
-                'rate' => '96',
+                'rate' => (string)($merchantConfig['rate'] ?? '96'),
                 'issmrz' => 1
             ];
 
@@ -241,6 +255,16 @@ class CodePay
         }
     }
 
+    private function loadMerchantConfig(): array
+    {
+        if (!file_exists($this->configFile)) {
+            return [];
+        }
+
+        $config = json_decode(file_get_contents($this->configFile), true);
+        return is_array($config) ? $config : [];
+    }
+
     /**
      * Create payment request according to CodePay protocol
      * 按照码支付协议创建支付请求
@@ -254,6 +278,7 @@ class CodePay
             
             // Generate internal trade number
             $tradeNo = $this->generateTradeNo();
+            $statusToken = bin2hex(random_bytes(16));
             
             // 检查是否启用经营码收款模式
             $businessQrMode = $this->config['payment']['business_qr_mode']['enabled'] ?? false;
@@ -294,6 +319,7 @@ class CodePay
                 'add_time' => date('Y-m-d H:i:s'),
                 'notify_url' => $params['notify_url'],
                 'return_url' => $params['return_url'],
+                'status_token' => $statusToken,
                 'sitename' => $params['sitename'] ?? ''
             ]);
             
@@ -315,7 +341,8 @@ class CodePay
                 // 生成二维码访问URL
                 $token = md5('qrcode_access_' . date('Y-m-d'));
                 $baseUrl = $this->getBaseUrl();
-                $qrCodeUrl = $baseUrl . '/qrcode.php?type=business&token=' . $token;
+                $qrVersion = file_exists($qrCodePath) ? (filemtime($qrCodePath) . '-' . filesize($qrCodePath)) : time();
+                $qrCodeUrl = $baseUrl . '/qrcode.php?type=business&token=' . $token . '&v=' . rawurlencode((string)$qrVersion);
                 
                 $paymentUrl = '经营码收款模式';  // 经营码模式不需要支付URL
                 $qrCodeBase64 = null;  // 经营码模式不使用base64
@@ -336,7 +363,7 @@ class CodePay
                 );
 
                 // Generate QR code
-                $qrCodeGenerator = new QRCodeGenerator();
+                $qrCodeGenerator = new QRCodeGenerator($this->config);
                 $qrCodeBase64 = $qrCodeGenerator->generate($paymentUrl);
                 $qrCodeUrl = null;  // 传统模式不使用URL
                 
@@ -352,6 +379,7 @@ class CodePay
                 'pid' => $params['pid'], // 增加pid确保返回
                 'trade_no' => $tradeNo,
                 'out_trade_no' => $params['out_trade_no'],
+                'status_token' => $statusToken,
                 'money' => $params['money'],  // 原始金额
                 'payment_amount' => $paymentAmount,  // 实际支付金额
                 'payment_url' => $paymentUrl
@@ -394,6 +422,123 @@ class CodePay
                 'msg' => $e->getMessage()
             ];
         }
+    }
+
+    public function getExistingPaymentPageData(string $outTradeNo, string $statusToken): array
+    {
+        try {
+            $order = $this->db->get('codepay_orders', '*', [
+                'out_trade_no' => $outTradeNo
+            ]);
+
+            if (!$order) {
+                return [
+                    'code' => -1,
+                    'msg' => '订单不存在'
+                ];
+            }
+
+            $storedStatusToken = (string)($order['status_token'] ?? '');
+            if ($storedStatusToken === '' || !hash_equals($storedStatusToken, $statusToken)) {
+                return [
+                    'code' => -1,
+                    'msg' => '订单访问令牌无效'
+                ];
+            }
+
+            if ((int)$order['status'] === 1) {
+                return [
+                    'code' => -1,
+                    'msg' => '订单已支付'
+                ];
+            }
+
+            if ((int)$order['status'] === 2) {
+                return [
+                    'code' => -1,
+                    'msg' => '订单已过期'
+                ];
+            }
+
+            return $this->buildPaymentPageResponse($order);
+        } catch (\Exception $e) {
+            $this->logger->error('Failed to rebuild existing payment page.', [
+                'error' => $e->getMessage(),
+                'out_trade_no' => $outTradeNo
+            ]);
+
+            return [
+                'code' => -1,
+                'msg' => $e->getMessage()
+            ];
+        }
+    }
+
+    private function buildPaymentPageResponse(array $order): array
+    {
+        $businessQrMode = $this->config['payment']['business_qr_mode']['enabled'] ?? false;
+        $paymentAmount = (float)($order['payment_amount'] ?: $order['price']);
+        $paymentUrl = '';
+        $qrCodeBase64 = null;
+        $qrCodeUrl = null;
+
+        if ($businessQrMode) {
+            $qrCodePath = $this->config['payment']['business_qr_mode']['qr_code_path'];
+
+            if (!file_exists($qrCodePath)) {
+                throw new \Exception('经营码二维码文件不存在，请先上传经营码到: ' . $qrCodePath);
+            }
+
+            $token = md5('qrcode_access_' . date('Y-m-d'));
+            $baseUrl = $this->getBaseUrl();
+            $qrVersion = file_exists($qrCodePath) ? (filemtime($qrCodePath) . '-' . filesize($qrCodePath)) : time();
+            $qrCodeUrl = $baseUrl . '/qrcode.php?type=business&token=' . $token . '&v=' . rawurlencode((string)$qrVersion);
+            $paymentUrl = '经营码收款模式';
+        } else {
+            $alipayTransfer = new AlipayTransfer($this->config);
+            $paymentUrl = $alipayTransfer->createOrder(
+                $order['out_trade_no'],
+                $paymentAmount,
+                $order['name']
+            );
+
+            $qrCodeGenerator = new QRCodeGenerator($this->config);
+            $qrCodeBase64 = $qrCodeGenerator->generate($paymentUrl);
+        }
+
+        $response = [
+            'code' => 1,
+            'msg' => 'SUCCESS',
+            'pid' => $order['pid'],
+            'trade_no' => $order['id'],
+            'out_trade_no' => $order['out_trade_no'],
+            'status_token' => $order['status_token'],
+            'type' => $order['type'],
+            'name' => $order['name'],
+            'money' => $order['price'],
+            'payment_amount' => $paymentAmount,
+            'payment_url' => $paymentUrl,
+            'notify_url' => $order['notify_url'] ?? '',
+            'return_url' => $order['return_url'] ?? '',
+            'sitename' => $order['sitename'] ?? ''
+        ];
+
+        if ($businessQrMode) {
+            $response['qr_code_url'] = $qrCodeUrl;
+            $response['business_qr_mode'] = true;
+            $response['payment_instruction'] = "请使用支付宝扫描二维码，支付金额：{$paymentAmount} 元";
+            $response['payment_tips'] = [
+                "请务必支付准确金额：{$paymentAmount} 元",
+                "支付时无需填写备注信息",
+                "请在5分钟内完成支付，超时订单将被自动删除",
+                "支付完成后系统会自动检测到账",
+                "如长时间未到账，请联系客服"
+            ];
+        } else {
+            $response['qr_code'] = $qrCodeBase64;
+        }
+
+        return $response;
     }
 
     /**
@@ -547,7 +692,7 @@ class CodePay
      * Query single order according to CodePay protocol
      * 按照码支付协议查询单个订单
      */
-    public function queryOrder(string $pid, ?string $key, string $outTradeNo, bool $validateKey = true): array
+    public function queryOrder(string $pid, ?string $key, string $outTradeNo, bool $validateKey = true, ?string $statusToken = null): array
     {
         $this->logger->info('Querying order according to CodePay protocol.', ['out_trade_no' => $outTradeNo, 'pid' => $pid]);
         try {
@@ -575,6 +720,23 @@ class CodePay
                     'code' => -1,
                     'msg' => 'Order not found'
                 ];
+            }
+
+            $timeoutSeconds = (int)($this->config['payment']['order_timeout'] ?? 300);
+            $createdAt = strtotime((string)$order['add_time']);
+            if ((int)$order['status'] === 0 && $createdAt !== false && $createdAt < time() - $timeoutSeconds) {
+                $this->db->update('codepay_orders', ['status' => 2], ['id' => $order['id']]);
+                $order['status'] = 2;
+            }
+
+            if (!$validateKey) {
+                $storedStatusToken = (string)($order['status_token'] ?? '');
+                if ($storedStatusToken === '' || $statusToken === null || !hash_equals($storedStatusToken, $statusToken)) {
+                    return [
+                        'code' => -1,
+                        'msg' => 'Invalid order status token'
+                    ];
+                }
             }
 
             $response = [
@@ -693,7 +855,8 @@ class CodePay
             if ($params['trade_status'] === 'TRADE_SUCCESS') {
                 $this->db->update('codepay_orders', [
                     'status' => 1,
-                    'pay_time' => date('Y-m-d H:i:s')
+                    'pay_time' => date('Y-m-d H:i:s'),
+                    'payment_amount' => $params['money']
                 ], ['out_trade_no' => $params['out_trade_no']]);
                 
                 $this->logger->info('Order status updated to paid.', ['out_trade_no' => $params['out_trade_no']]);
