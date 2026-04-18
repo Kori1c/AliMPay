@@ -314,32 +314,242 @@ cp config/alipay.example.php config/alipay.php
 
 ## 对接方式
 
-### 创建订单
+这一版对外仍然走 CodePay 风格接口，所以如果你原来业务系统就是对接 CodePay，迁移成本会比较低。
 
-调用 `/submit.php` 或 `/mapi.php`，参数仍然按 CodePay 常见格式传：
+### 接入前你需要拿到什么
+
+先去后台的“商户配置 (CodePay)”里拿到：
+
+- `merchant_id`
+- `merchant_key`
+
+之后你自己的业务系统用这两个值来发起下单和查询。
+
+### 下单接口
+
+可用入口：
+
+- `POST /submit.php`
+- `POST /mapi.php`
+- `POST /api.php?act=submit&format=json`
+
+如果你希望直接返回支付页，常用的是 `/submit.php`。  
+如果你希望拿 JSON 结果自己处理，建议用 `/mapi.php` 或 `/api.php?act=submit&format=json`。
+
+### 下单参数
+
+必填：
 
 ```text
 pid          商户ID
-type         支付方式，一般为 alipay
+type         支付方式，固定 alipay
 out_trade_no 商户订单号
 notify_url   异步通知地址
-return_url   同步跳转地址
+return_url   支付完成后的同步跳转地址
 name         商品名称
 money        支付金额
-sign         签名
+sign         MD5 签名
 ```
 
-### 查询订单
+可选：
+
+```text
+sitename     站点名称
+sign_type    默认 MD5，可不传
+```
+
+### 签名规则
+
+签名方式是 MD5，规则和常见 CodePay 一样：
+
+1. 去掉空值参数
+2. 去掉 `sign` 和 `sign_type`
+3. 按参数名升序排序
+4. 拼成 `key=value&key=value`
+5. 在字符串末尾直接拼接商户密钥
+6. 对结果做 `md5`
+
+示例参数：
+
+```text
+money=10.00
+name=测试订单
+notify_url=https://example.com/notify
+out_trade_no=ORDER202604180001
+pid=1001xxxxxxxxxxxx
+return_url=https://example.com/return
+type=alipay
+```
+
+待签名字符串：
+
+```text
+money=10.00&name=测试订单&notify_url=https://example.com/notify&out_trade_no=ORDER202604180001&pid=1001xxxxxxxxxxxx&return_url=https://example.com/return&type=alipay
+```
+
+最终签名：
+
+```text
+md5(待签名字符串 + merchant_key)
+```
+
+### PHP 签名示例
+
+```php
+<?php
+$params = [
+    'pid' => '你的商户ID',
+    'type' => 'alipay',
+    'out_trade_no' => 'ORDER202604180001',
+    'notify_url' => 'https://example.com/notify',
+    'return_url' => 'https://example.com/return',
+    'name' => '测试订单',
+    'money' => '10.00',
+];
+
+$merchantKey = '你的商户密钥';
+
+ksort($params);
+$parts = [];
+foreach ($params as $key => $value) {
+    if ($value !== '' && $value !== null) {
+        $parts[] = $key . '=' . $value;
+    }
+}
+
+$signStr = implode('&', $parts);
+$params['sign'] = md5($signStr . $merchantKey);
+$params['sign_type'] = 'MD5';
+```
+
+### 下单请求示例
 
 ```bash
-GET /api.php?act=order&pid=商户ID&out_trade_no=订单号&status_token=订单状态令牌
+curl -X POST http://localhost:8080/mapi.php \
+  -d "pid=你的商户ID" \
+  -d "type=alipay" \
+  -d "out_trade_no=ORDER202604180001" \
+  -d "notify_url=https://example.com/notify" \
+  -d "return_url=https://example.com/return" \
+  -d "name=测试订单" \
+  -d "money=10.00" \
+  -d "sign=这里填签名" \
+  -d "sign_type=MD5"
 ```
 
-### 查询商户
+### 下单返回说明
+
+创建成功后，系统会生成订单、支付页和状态令牌。  
+不同入口返回形式略有区别：
+
+- `/submit.php`：直接进入支付页
+- `/mapi.php`：返回 JSON
+- `/api.php?act=submit&format=json`：返回 JSON
+
+如果是经营码模式，系统可能会自动把实际支付金额调整为 `10.01`、`10.02` 这种带偏移的值，用于区分同金额订单。
+
+### 查询单个订单
+
+商户服务端查询：
+
+```bash
+GET /api.php?act=order&pid=商户ID&key=商户密钥&out_trade_no=订单号
+```
+
+成功时会返回类似：
+
+```json
+{
+  "code": 1,
+  "msg": "SUCCESS",
+  "trade_no": "20260418123000123456",
+  "out_trade_no": "ORDER202604180001",
+  "type": "alipay",
+  "pid": "1001xxxxxxxxxxxx",
+  "addtime": "2026-04-18 12:30:00",
+  "endtime": "2026-04-18 12:31:08",
+  "name": "测试订单",
+  "money": "10.00",
+  "status": 1
+}
+```
+
+状态说明：
+
+- `0`：待支付
+- `1`：已支付
+- `2`：已过期
+
+### 查询多笔订单
+
+```bash
+GET /api.php?act=orders&pid=商户ID&key=商户密钥&limit=20
+```
+
+### 查询商户信息
 
 ```bash
 GET /api.php?act=query&pid=商户ID&key=商户密钥
 ```
+
+### 支付回调说明
+
+订单支付成功后，系统会向你下单时传入的 `notify_url` 发起通知。
+
+回调参数包含：
+
+```text
+pid
+trade_no
+out_trade_no
+type
+name
+money
+trade_status
+sign
+sign_type
+```
+
+其中：
+
+- `trade_status` 成功时固定为 `TRADE_SUCCESS`
+- `sign_type` 为 `MD5`
+
+### 你的回调地址需要怎么返回
+
+你的服务端验证签名成功、并且业务处理成功后，必须原样输出：
+
+```text
+success
+```
+
+如果没有返回 `success`，系统会认为通知失败。
+
+### 回调处理建议
+
+你的回调逻辑里至少做这几件事：
+
+1. 验证签名
+2. 验证订单号是否存在
+3. 验证金额是否一致
+4. 判断订单是否已处理，避免重复加款
+5. 业务处理成功后输出 `success`
+
+项目里 [notify.php](/Users/kkk/Documents/文稿 - kk 的 Mac mini/alimpay/notify.php) 里有一份演示逻辑，可以参考，但上线前建议按你自己的业务系统重写。
+
+### 支付页状态轮询
+
+支付页内部查询订单状态时，不走商户密钥，而是用订单自己的 `status_token`。  
+这个令牌是订单级别的，不要自己伪造，也不要拿它替代商户密钥去做服务端管理查询。
+
+### 对接时常见坑
+
+- `type` 不是 `alipay`
+- 签名时参数顺序错了
+- 签名串里混入了空参数
+- 用了错误的商户密钥
+- `notify_url` 没有返回纯文本 `success`
+- 经营码模式下，你拿“原始金额”去硬比账单金额，忽略了系统自动偏移
 
 ## 上线前建议自测一遍
 
