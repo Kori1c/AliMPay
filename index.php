@@ -13,6 +13,11 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	        window.tailwind.config = {
 	            darkMode: 'class'
 	        };
+	        (function() {
+	            var s = localStorage.getItem('darkMode');
+	            if (s === null) s = window.matchMedia('(prefers-color-scheme: dark)').matches ? '1' : '0';
+	            if (s === '1') document.documentElement.classList.add('dark');
+	        })();
 	    </script>
 	    <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -1149,7 +1154,11 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                 loading: false,
                 activeTab: 'dashboard',
                 settingsSection: 'merchant',
-                darkMode: localStorage.getItem('darkMode') === 'true',
+                darkMode: (function() {
+                    var s = localStorage.getItem('darkMode');
+                    if (s === null) return window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    return s === '1';
+                })(),
                 stats: { today_revenue: 0, total_revenue: 0, order_counts: { total: 0, paid: 0 }, recent_orders: [] },
                 orders: { orders: [], pagination: { total: 0, page: 1, limit: 20 } },
                 editConfig: { payment: { business_qr_mode: {}, anti_risk_url: { base_urls: {} } } },
@@ -1180,7 +1189,10 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                 ],
 
                 init() {
-                    this.$watch('darkMode', val => localStorage.setItem('darkMode', val));
+                    this.$watch('darkMode', val => {
+                        localStorage.setItem('darkMode', val ? '1' : '0');
+                        document.documentElement.classList.toggle('dark', val);
+                    });
                     this.$watch('activeTab', val => {
                         this.refreshData();
                         this.$nextTick(() => lucide.createIcons());
@@ -1190,6 +1202,16 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                         setInterval(() => this.getHealth(), 30000);
                     }
                     this.$nextTick(() => lucide.createIcons());
+
+                    // Sync system dark mode preference changes
+                    var self = this;
+                    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+                    mq.addEventListener('change', function(e) {
+                        if (localStorage.getItem('darkMode') === null || localStorage.getItem('darkMode') === '') {
+                            self.darkMode = e.matches;
+                            document.documentElement.classList.toggle('dark', e.matches);
+                        }
+                    });
                 },
 
                 updateCsrfToken(token) {

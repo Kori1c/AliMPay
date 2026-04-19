@@ -535,7 +535,7 @@ success
 4. 判断订单是否已处理，避免重复加款
 5. 业务处理成功后输出 `success`
 
-项目里 [notify.php](/Users/kkk/Documents/文稿 - kk 的 Mac mini/alimpay/notify.php) 里有一份演示逻辑，可以参考，但上线前建议按你自己的业务系统重写。
+项目里 [notify.php](notify.php) 里有一份演示逻辑，可以参考，但上线前建议按你自己的业务系统重写。
 
 ### 支付页状态轮询
 
