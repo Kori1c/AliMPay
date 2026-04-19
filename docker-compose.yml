@@ -12,6 +12,8 @@ services:
     restart: unless-stopped
     environment:
       - TZ=Asia/Shanghai
+    command: >
+      sh -c "nohup php /var/www/html/container_monitor.php > /var/www/html/logs/monitor.log 2>&1 & apache2-foreground"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health.php?action=status"]
       interval: 30s

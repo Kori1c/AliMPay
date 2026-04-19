@@ -130,6 +130,17 @@ try {
         try {
             $paymentMonitor->runMonitoringCycle();
             $logger->debug("Container monitor cycle completed", ["cycle" => $cycleCount]);
+
+            // Update status file for health check
+            $statusData = [
+                'status' => 'completed',
+                'last_run' => time(),
+                'last_run_formatted' => date('Y-m-d H:i:s'),
+                'message' => 'Automatic monitoring cycle completed',
+                'updated_by' => 'container_monitor'
+            ];
+            file_put_contents(__DIR__ . '/data/monitor_status.json', json_encode($statusData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+
         } catch (Exception $e) {
             $logger->error("Container monitor cycle failed", [
                 "cycle" => $cycleCount,

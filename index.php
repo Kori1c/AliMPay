@@ -9,18 +9,16 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AliMPay 控制面板</title>
 	    <script>
+	        // Always sync with system dark mode preference
+	        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+	            document.documentElement.classList.add('dark');
+	        }
+	    </script>
+	    <script>
 	        window.tailwind = window.tailwind || {};
 	        window.tailwind.config = {
 	            darkMode: 'class'
 	        };
-	        (function() {
-	            var s = localStorage.getItem('darkMode');
-	            if (s === null) s = window.matchMedia('(prefers-color-scheme: dark)').matches ? '1' : '0';
-	            if (s === '1') {
-                document.documentElement.classList.add('dark');
-                document.body.classList.add('dark');
-            }
-	        })();
 	    </script>
 	    <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -88,12 +86,12 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	            position: relative;
 	            z-index: 1;
 	        }
-	        :root.dark .mobile-bottom-nav {
+	        .dark body, body.dark .mobile-bottom-nav {
 	            background: rgba(2, 6, 23, 0.96);
 	            border-color: rgba(51, 65, 85, 0.92);
 	            box-shadow: 0 -14px 30px rgba(0, 0, 0, 0.32);
 	        }
-	        :root.dark .mobile-nav-active {
+	        .dark body, body.dark .mobile-nav-active {
 	            background: linear-gradient(135deg, #2563eb, #1d4ed8);
 	            box-shadow: 0 8px 18px rgba(37, 99, 235, 0.34);
 	        }
@@ -160,80 +158,80 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	            min-height: 100vh;
 	            transition: background 180ms ease, color 180ms ease;
 	        }
-	        :root.dark {
+	        .dark body, body.dark {
 	            background: radial-gradient(circle at top left, #111827, #020617);
 	            color: #f8fafc;
 	        }
-	        :root.dark .text-slate-500 {
+	        .dark body, body.dark .text-slate-500 {
 	            color: #cbd5e1;
 	        }
-	        :root.dark .text-slate-400 {
+	        .dark body, body.dark .text-slate-400 {
 	            color: #94a3b8;
 	        }
-	        :root.dark .text-slate-600 {
+	        .dark body, body.dark .text-slate-600 {
 	            color: #cbd5e1;
 	        }
-	        :root.dark .text-slate-800 {
+	        .dark body, body.dark .text-slate-800 {
 	            color: #f8fafc;
 	        }
-	        :root.dark .text-slate-950,
-	        :root.dark h1,
-	        :root.dark h2,
-	        :root.dark h3,
-	        :root.dark h4,
-	        :root.dark strong {
+	        .dark body, body.dark .text-slate-950,
+	        .dark body, body.dark h1,
+	        .dark body, body.dark h2,
+	        .dark body, body.dark h3,
+	        .dark body, body.dark h4,
+	        .dark body, body.dark strong {
 	            color: #f8fafc;
 	        }
-	        :root.dark p,
-	        :root.dark label,
-	        :root.dark th,
-	        :root.dark td {
+	        .dark body, body.dark p,
+	        .dark body, body.dark label,
+	        .dark body, body.dark th,
+	        .dark body, body.dark td {
 	            color: #dbe4f0;
 	        }
-	        :root.dark .text-slate-300 {
+	        .dark body, body.dark .text-slate-300 {
 	            color: #dbe4f0;
 	        }
-	        :root.dark input,
-	        :root.dark textarea,
-	        :root.dark select {
+	        .dark body, body.dark input,
+	        .dark body, body.dark textarea,
+	        .dark body, body.dark select {
 	            background: rgba(15, 23, 42, 0.88);
 	            border-color: rgba(148, 163, 184, 0.28);
 	            color: #f8fafc;
 	        }
-	        :root.dark input[readonly],
-	        :root.dark textarea[readonly] {
+	        .dark body, body.dark input[readonly],
+	        .dark body, body.dark textarea[readonly] {
 	            background: rgba(30, 41, 59, 0.72);
 	            color: #cbd5e1;
 	        }
-	        :root.dark input::placeholder,
-	        :root.dark textarea::placeholder {
+	        .dark body, body.dark input::placeholder,
+	        .dark body, body.dark textarea::placeholder {
 	            color: #64748b;
 	        }
-	        :root.dark .log-terminal {
+	        .dark body, body.dark .log-terminal {
 	            background: #020617;
 	            color: #dbeafe;
 	        }
-	        :root.dark .glass {
+	        .dark body, body.dark .glass {
 	            background: rgba(15, 23, 42, 0.88);
 	            border-color: rgba(148, 163, 184, 0.18);
 	        }
-	        :root.dark .nav-item:not(.nav-item-active) {
+	        .dark body, body.dark .nav-item:not(.nav-item-active) {
 	            color: #cbd5e1;
 	        }
-	        :root.dark .nav-item:not(.nav-item-active):hover {
+	        .dark body, body.dark .nav-item:not(.nav-item-active):hover {
 	            background: rgba(30, 41, 59, 0.82);
 	            color: #ffffff;
 	        }
-	        :root.dark input:focus,
-	        :root.dark textarea:focus,
-	        :root.dark select:focus {
+	        .dark body, body.dark input:focus,
+	        .dark body, body.dark textarea:focus,
+	        .dark body, body.dark select:focus {
 	            border-color: #60a5fa;
 	            box-shadow: 0 0 0 3px rgba(96,165,250,0.18);
 	        }
-	        :root.dark .settings-panel {
+	        .dark body, body.dark .settings-panel {
 	            background: rgba(15, 23, 42, 0.88);
 	        }
-	        :root.dark .surface-muted {
+	        .dark body, body.dark .surface-muted {
 	            background: rgba(30, 41, 59, 0.54);
 	            border: 1px solid rgba(148, 163, 184, 0.14);
 	        }
@@ -252,16 +250,16 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	            color: #ffffff;
 	            box-shadow: 0 10px 22px rgba(37, 99, 235, 0.24);
 	        }
-	        :root.dark .settings-tab {
+	        .dark body, body.dark .settings-tab {
 	            background: rgba(30, 41, 59, 0.9);
 	            border-color: rgba(100, 116, 139, 0.7);
 	            color: #e2e8f0;
 	        }
-	        :root.dark .settings-tab:hover {
+	        .dark body, body.dark .settings-tab:hover {
 	            background: rgba(51, 65, 85, 0.96);
 	            color: #ffffff;
 	        }
-	        :root.dark .settings-tab-active {
+	        .dark body, body.dark .settings-tab-active {
 	            background: #2563eb;
 	            border-color: #60a5fa;
 	            color: #ffffff;
@@ -271,21 +269,21 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	            background: rgba(248, 250, 252, 0.9);
 	            border: 1px solid rgba(226, 232, 240, 0.86);
 	        }
-	        :root.dark .config-toggle-row {
+	        .dark body, body.dark .config-toggle-row {
 	            background: rgba(15, 23, 42, 0.74);
 	            border-color: rgba(71, 85, 105, 0.78);
 	        }
-	        :root.dark .config-toggle-row p {
+	        .dark body, body.dark .config-toggle-row p {
 	            color: #f8fafc;
 	        }
-	        :root.dark .config-toggle-row .hint-text {
+	        .dark body, body.dark .config-toggle-row .hint-text {
 	            color: #94a3b8;
 	        }
 	        .segmented-control {
 	            background: rgba(255, 255, 255, 0.76);
 	            border: 1px solid rgba(203, 213, 225, 0.82);
 	        }
-	        :root.dark .segmented-control {
+	        .dark body, body.dark .segmented-control {
 	            background: rgba(15, 23, 42, 0.72);
 	            border-color: rgba(71, 85, 105, 0.82);
 	        }
@@ -296,10 +294,10 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	            background: rgba(226, 232, 240, 0.75);
 	            color: #0f172a;
 	        }
-	        :root.dark .segmented-option {
+	        .dark body, body.dark .segmented-option {
 	            color: #cbd5e1;
 	        }
-	        :root.dark .segmented-option:hover {
+	        .dark body, body.dark .segmented-option:hover {
 	            background: rgba(51, 65, 85, 0.85);
 	            color: #ffffff;
 	        }
@@ -334,26 +332,26 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	        .floating-save button {
 	            border-radius: 8px;
 	        }
-	        :root.dark thead tr {
+	        .dark body, body.dark thead tr {
 	            background: rgba(15, 23, 42, 0.96) !important;
 	        }
-	        :root.dark thead th {
+	        .dark body, body.dark thead th {
 	            color: #cbd5e1 !important;
 	            border-color: rgba(148, 163, 184, 0.18);
 	        }
-	        :root.dark tbody tr {
+	        .dark body, body.dark tbody tr {
 	            border-color: rgba(148, 163, 184, 0.12);
 	        }
-	        :root.dark tbody tr:hover {
+	        .dark body, body.dark tbody tr:hover {
 	            background: rgba(30, 41, 59, 0.42) !important;
 	        }
-	        :root.dark .empty-state {
+	        .dark body, body.dark .empty-state {
 	            color: #94a3b8 !important;
 	        }
-	        :root.dark .metric-label {
+	        .dark body, body.dark .metric-label {
 	            color: #cbd5e1 !important;
 	        }
-	        :root.dark .metric-value {
+	        .dark body, body.dark .metric-value {
 	            color: #f8fafc !important;
 	        }
 
@@ -438,8 +436,8 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	                padding: 14px;
 	                box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
 	            }
-	            :root.dark .orders-table tr,
-	            :root.dark .recent-orders-table tr {
+	            .dark body, body.dark .orders-table tr,
+	            .dark body, body.dark .recent-orders-table tr {
 	                background: rgba(15, 23, 42, 0.86);
 	                border-color: rgba(71, 85, 105, 0.7);
 	            }
@@ -479,8 +477,8 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	                padding: 8px 10px !important;
 	                margin-bottom: 12px;
 	            }
-	            :root.dark .order-price-cell,
-	            :root.dark .order-paid-cell {
+	            .dark body, body.dark .order-price-cell,
+	            .dark body, body.dark .order-paid-cell {
 	                background: rgba(30, 41, 59, 0.72);
 	            }
 	            .order-price-cell {
@@ -533,6 +531,48 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	                justify-content: center;
 	            }
 	        }
+
+        /* Comprehensive Dark Mode - always active via media query */
+        @media (prefers-color-scheme: dark) {
+            html.dark, .dark body, body.dark {
+                background: #111827 !important;
+                background-color: #111827 !important;
+                color: #f8fafc !important;
+            }
+            html.dark .glass, .dark body .glass, body.dark .glass,
+            html.dark .page-panel, .dark body .page-panel, body.dark .page-panel,
+            html.dark .motion-card, .dark body .motion-card, body.dark .motion-card {
+                background: rgba(15, 23, 42, 0.9) !important;
+                border-color: rgba(71, 85, 105, 0.5) !important;
+            }
+            html.dark input, html.dark textarea, html.dark select,
+            .dark body input, body.dark input,
+            .dark body textarea, body.dark textarea,
+            .dark body select, body.dark select {
+                background: rgba(15, 23, 42, 0.9) !important;
+                border-color: rgba(71, 85, 105, 0.5) !important;
+                color: #f8fafc !important;
+            }
+            html.dark .text-slate-500, .dark body .text-slate-500, body.dark .text-slate-500 { color: #94a3b8 !important; }
+            html.dark .text-slate-600, .dark body .text-slate-600, body.dark .text-slate-600 { color: #cbd5e1 !important; }
+            html.dark .text-slate-700, .dark body .text-slate-700, body.dark .text-slate-700 { color: #e2e8f0 !important; }
+            html.dark .text-slate-800, .dark body .text-slate-800, body.dark .text-slate-800 { color: #f1f5f9 !important; }
+            html.dark .text-slate-950, .dark body .text-slate-950, body.dark .text-slate-950 { color: #f8fafc !important; }
+            html.dark .text-slate-400, .dark body .text-slate-400, body.dark .text-slate-400 { color: #94a3b8 !important; }
+            html.dark .text-slate-300, .dark body .text-slate-300, body.dark .text-slate-300 { color: #cbd5e1 !important; }
+            html.dark label, .dark body label, body.dark label { color: #cbd5e1 !important; }
+            html.dark th, .dark body th, body.dark th { color: #cbd5e1 !important; }
+            html.dark td, .dark body td, body.dark td { color: #cbd5e1 !important; }
+            html.dark p, .dark body p, body.dark p { color: #cbd5e1 !important; }
+            html.dark h1, .dark body h1, body.dark h1,
+            html.dark h2, .dark body h2, body.dark h2,
+            html.dark h3, .dark body h3, body.dark h3,
+            html.dark h4, .dark body h4, body.dark h4 { color: #f8fafc !important; }
+            html.dark strong, .dark body strong, body.dark strong { color: #f8fafc !important; }
+            html.dark .border-slate-200, .dark body .border-slate-200, body.dark .border-slate-200 { border-color: rgba(71, 85, 105, 0.5) !important; }
+            html.dark .border-slate-300, .dark body .border-slate-300, body.dark .border-slate-300 { border-color: rgba(71, 85, 105, 0.5) !important; }
+        }
+
     </style>
 </head>
 <body x-data="dashboard()" :class="{ 'dark': darkMode }" x-init="init()">
@@ -600,10 +640,6 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                     </nav>
                 </div>
                 <div class="mt-auto p-6 space-y-4">
-                    <button @click="darkMode = !darkMode" class="w-full flex items-center space-x-3 px-4 py-2 text-slate-500 hover:text-slate-800 dark:hover:text-white">
-                        <i :data-lucide="darkMode ? 'sun' : 'moon'" class="w-5 h-5"></i>
-                        <span x-text="darkMode ? '浅色模式' : '深色模式'"></span>
-                    </button>
                     <button @click="logout()" class="w-full flex items-center space-x-3 px-4 py-2 text-red-500 hover:text-red-600">
                         <i data-lucide="log-out" class="w-5 h-5"></i>
                         <span>登出系统</span>
@@ -1157,11 +1193,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                 loading: false,
                 activeTab: 'dashboard',
                 settingsSection: 'merchant',
-                darkMode: (function() {
-                    var s = localStorage.getItem('darkMode');
-                    if (s === null) return window.matchMedia('(prefers-color-scheme: dark)').matches;
-                    return s === '1';
-                })(),
+                darkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
                 stats: { today_revenue: 0, total_revenue: 0, order_counts: { total: 0, paid: 0 }, recent_orders: [] },
                 orders: { orders: [], pagination: { total: 0, page: 1, limit: 20 } },
                 editConfig: { payment: { business_qr_mode: {}, anti_risk_url: { base_urls: {} } } },
@@ -1192,8 +1224,9 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                 ],
 
                 init() {
+                    // Always sync darkMode with system preference
+                    var self = this;
                     this.$watch('darkMode', val => {
-                        localStorage.setItem('darkMode', val ? '1' : '0');
                         document.documentElement.classList.toggle('dark', val);
                     });
                     this.$watch('activeTab', val => {
@@ -1206,14 +1239,11 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                     }
                     this.$nextTick(() => lucide.createIcons());
 
-                    // Sync system dark mode preference changes
-                    var self = this;
+                    // Listen for system dark mode changes
                     var mq = window.matchMedia('(prefers-color-scheme: dark)');
                     mq.addEventListener('change', function(e) {
-                        if (localStorage.getItem('darkMode') === null || localStorage.getItem('darkMode') === '') {
-                            self.darkMode = e.matches;
-                            document.documentElement.classList.toggle('dark', e.matches);
-                        }
+                        self.darkMode = e.matches;
+                        document.documentElement.classList.toggle('dark', e.matches);
                     });
                 },
 
