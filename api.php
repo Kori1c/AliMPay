@@ -5,9 +5,17 @@ ob_start();
 
 // Set headers early to prevent header issues
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if ($origin !== '') {
+    $host = parse_url($origin, PHP_URL_HOST);
+    $serverHost = $_SERVER['HTTP_HOST'] ?? '';
+    if ($host === $serverHost) {
+        header('Access-Control-Allow-Origin: ' . $origin);
+    }
+}
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
+header('X-Content-Type-Options: nosniff');
 
 // Handle preflight requests
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {

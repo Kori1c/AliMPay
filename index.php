@@ -65,6 +65,21 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	        .mobile-nav-active:hover {
 	            transform: translateY(-1px);
 	        }
+	        .mobile-slider {
+	            position: absolute;
+	            top: 0;
+	            height: 100%;
+	            background: linear-gradient(135deg, #2563eb, #4f46e5);
+	            border-radius: 12px;
+	            box-shadow: 0 8px 18px rgba(37, 99, 235, 0.28);
+	            transition: left 280ms cubic-bezier(.22, 1, .36, 1), width 280ms cubic-bezier(.22, 1, .36, 1);
+	            pointer-events: none;
+	            z-index: 0;
+	        }
+	        .mobile-slider ~ button {
+	            position: relative;
+	            z-index: 1;
+	        }
 	        body.dark .mobile-bottom-nav {
 	            background: rgba(2, 6, 23, 0.96);
 	            border-color: rgba(51, 65, 85, 0.92);
@@ -1015,7 +1030,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                             <div class="space-y-1.5">
                                 <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">商户密钥</label>
                                 <div class="flex gap-2">
-                                    <input :type="showMerchantKey ? 'text' : 'password'" x-model="showMerchantKey ? realMerchantKey : merchantInfo.merchant_key" readonly class="flex-1 px-4 py-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 font-mono text-xs text-slate-500 cursor-not-allowed">
+                                    <input :type="showMerchantKey ? 'text' : 'password'" x-model="showMerchantKey ? regeneratedKey : merchantInfo.merchant_key" readonly class="flex-1 px-4 py-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 font-mono text-xs text-slate-500 cursor-not-allowed">
                                     <button @click="showMerchantKey = !showMerchantKey" class="px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800" x-text="showMerchantKey ? '隐藏' : '显示'"></button>
                                 </div>
                                 <button @click="regenerateKey()" class="text-xs text-red-500 hover:text-red-600 font-semibold">重新生成密钥</button>
@@ -1099,11 +1114,16 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                     </div>
                 </div>
 
-                <nav class="mobile-bottom-nav fixed bottom-0 left-0 right-0 z-40 grid grid-cols-4 gap-1 border-t border-slate-200 bg-white/95 p-2 shadow-lg shadow-slate-900/10 backdrop-blur md:hidden dark:border-slate-800 dark:bg-slate-950/95">
+                <nav class="mobile-bottom-nav fixed bottom-0 left-0 right-0 z-40 grid grid-cols-4 gap-1 border-t border-slate-200 bg-white/95 p-2 shadow-lg shadow-slate-900/10 backdrop-blur md:hidden dark:border-slate-800 dark:bg-slate-950/95" x-ref="mobileNav">
+                    <div class="mobile-slider" x-ref="mobileSlider"
+                         :style="{
+                             left: (activeMenuIndex * (100 / menuItems.length)) + '%',
+                             width: (100 / menuItems.length) + '%'
+                         }"></div>
                     <template x-for="item in menuItems" :key="item.id">
 	                        <button @click="activeTab = item.id"
-	                                :class="activeTab === item.id ? 'mobile-nav-active' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800/80'"
-	                                class="nav-item flex flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-bold">
+	                                :class="activeTab === item.id ? 'text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800/80'"
+	                                class="nav-item flex flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-bold transition-colors duration-200">
                             <i :data-lucide="item.icon" class="w-4 h-4"></i>
                             <span x-text="item.name"></span>
                         </button>
@@ -1123,6 +1143,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
         function dashboard() {
             return {
                 isLoggedIn: <?php echo $isLoggedIn ? 'true' : 'false'; ?>,
+                csrfToken: '',
                 loginPass: '',
                 error: '',
                 loading: false,
@@ -1138,6 +1159,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                 settingsSnapshot: '',
                 merchantInfo: { merchant_id: '', merchant_key: '********', admin_password: '********', created_at: '', status: 1, rate: '96', balance: '0.00' },
                 realMerchantKey: '',
+                regeneratedKey: '',
                 showMerchantKey: false,
                 qrInfo: { exists: false, modified: null, url: null },
                 uploading: false,
@@ -1168,6 +1190,24 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                         setInterval(() => this.getHealth(), 30000);
                     }
                     this.$nextTick(() => lucide.createIcons());
+                },
+
+                updateCsrfToken(token) {
+                    if (token) {
+                        this.csrfToken = token;
+                    }
+                },
+
+                async apiRequest(url, options = {}) {
+                    const headers = options.headers || {};
+                    headers['X-CSRF-Token'] = this.csrfToken;
+                    options.headers = headers;
+                    const res = await fetch(url, options);
+                    const data = await res.json();
+                    if (data._csrf_token) {
+                        this.updateCsrfToken(data._csrf_token);
+                    }
+                    return { res, data };
                 },
 
 	                get currentMenuName() {
@@ -1324,8 +1364,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                         let formData = new FormData();
                         formData.append('action', 'login');
                         formData.append('password', this.loginPass);
-                        const res = await fetch('admin_api.php?action=login', { method: 'POST', body: formData });
-                        const data = await res.json();
+                        const { data } = await this.apiRequest('admin_api.php?action=login', { method: 'POST', body: formData });
                         if (data.success) {
                             this.isLoggedIn = true;
                             this.refreshData();
@@ -1347,7 +1386,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 
                 async logout() {
                     this.isLoggedIn = false;
-                    await fetch('admin_api.php?action=logout');
+                    await this.apiRequest('admin_api.php?action=logout', { method: 'POST' });
                 },
 
                 async refreshData() {
@@ -1363,8 +1402,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                 },
 
                 async getStats() {
-                    const res = await fetch('admin_api.php?action=get_stats');
-                    const data = await res.json();
+                    const { data } = await this.apiRequest('admin_api.php?action=get_stats');
                     if (data.success) {
                         this.stats = data.data;
                     } else {
@@ -1380,8 +1418,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                             search: this.orderSearch,
                             status: this.orderStatusFilter
                         });
-                        const res = await fetch('admin_api.php?' + query.toString());
-                        const data = await res.json();
+                        const { data } = await this.apiRequest('admin_api.php?' + query.toString());
                         if (data.success) {
                             this.orders = data.data;
                         } else {
@@ -1396,25 +1433,22 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                     let formData = new FormData();
                     formData.append('id', id);
                     formData.append('status', status);
-                    const res = await fetch('admin_api.php?action=update_order_status', { method: 'POST', body: formData });
-                    const data = await res.json();
+                    const { data } = await this.apiRequest('admin_api.php?action=update_order_status', { method: 'POST', body: formData });
                     if (data.success) {
                         this.toast('订单已标记为已支付', 'success');
                         this.getOrders(this.orders.pagination.page);
                     } else {
-                        this.toast('操作失败', 'error');
+                        this.toast(data.message || '操作失败', 'error');
                     }
                 },
 
 	                async getConfig() {
-	                    const res = await fetch('admin_api.php?action=get_config', { cache: 'no-store' });
-	                    const data = await res.json();
+	                    const { data } = await this.apiRequest('admin_api.php?action=get_config', { cache: 'no-store' });
 	                    if (data.success) {
 	                        this.editConfig = JSON.parse(JSON.stringify(data.data.alipay));
 	                        this.normalizeConfig();
 	                        this.merchantInfo = data.data.merchant;
 	                        this.merchantInfo.admin_password = '';
-	                        this.realMerchantKey = data.data.merchant.merchant_key_plain || '';
 	                        this.showMerchantKey = false;
 	                        this.resetSettingsSnapshot();
 	                    }
@@ -1527,12 +1561,11 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                     this.loading = true;
                     try {
                         this.syncSwitchStateToConfig();
-                        const alipayRes = await fetch('admin_api.php?action=save_config', {
+                        const { data: alipayData } = await this.apiRequest('admin_api.php?action=save_config', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                             body: 'action=save_config&config=' + encodeURIComponent(JSON.stringify(this.editConfig))
                         });
-                        const alipayData = await alipayRes.json();
 
                         const merchantParams = new URLSearchParams();
                         merchantParams.set('action', 'save_merchant');
@@ -1543,12 +1576,11 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                         if (pwd && pwd !== '********') {
                             merchantParams.set('admin_password', pwd);
                         }
-                        const merchantRes = await fetch('admin_api.php?action=save_merchant', {
+                        const { data: merchantData } = await this.apiRequest('admin_api.php?action=save_merchant', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                             body: merchantParams.toString()
                         });
-                        const merchantData = await merchantRes.json();
 
                         if (alipayData.success && merchantData.success) {
                             if (alipayData.data) {
@@ -1574,11 +1606,9 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                 async regenerateKey() {
                     this.loading = true;
                     try {
-                        const res = await fetch('admin_api.php?action=regenerate_merchant_key', { method: 'POST' });
-                        const data = await res.json();
+                        const { data } = await this.apiRequest('admin_api.php?action=regenerate_merchant_key', { method: 'POST' });
                         if (data.success) {
-                            this.merchantInfo.merchant_key = data.data.merchant_key;
-                            this.realMerchantKey = data.data.merchant_key;
+                            this.regeneratedKey = data.data.merchant_key;
                             this.showMerchantKey = true;
                             this.toast('新密钥已生成，请立即复制保存', 'success', 8000);
                         } else {
@@ -1605,8 +1635,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                     try {
                         const fd = new FormData();
                         fd.append('qrcode', file);
-                        const res = await fetch('admin_api.php?action=upload_qrcode', { method: 'POST', body: fd });
-                        const data = await res.json();
+                        const { data } = await this.apiRequest('admin_api.php?action=upload_qrcode', { method: 'POST', body: fd });
                         if (data.success) {
                             this.toast('经营码已更新', 'success');
                             await this.getQrCode();
@@ -1623,8 +1652,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 
                 async getQrCode() {
                     try {
-                        const res = await fetch('admin_api.php?action=get_qrcode');
-                        const data = await res.json();
+                        const { data } = await this.apiRequest('admin_api.php?action=get_qrcode');
                         if (data.success) this.qrInfo = data.data;
                     } catch (e) {}
                 },
@@ -1634,8 +1662,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                     this.alipayTestResults = [];
                     this.showAlipayTestPopover = false;
                     try {
-                        const res = await fetch('admin_api.php?action=test_alipay');
-                        const data = await res.json();
+                        const { data } = await this.apiRequest('admin_api.php?action=test_alipay');
                         this.alipayTestResults = data.checks || [];
                     } catch (e) {
                         this.alipayTestResults = [{ name: '请求', status: 'fail', message: e.message }];
@@ -1661,16 +1688,14 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                 },
 
                 async getLogs() {
-                    const res = await fetch(`admin_api.php?action=get_logs&type=${this.logType}`);
-                    const data = await res.json();
+                    const { data } = await this.apiRequest(`admin_api.php?action=get_logs&type=${this.logType}`);
                     if (data.success) this.logs = data.data;
                 },
 
                 async triggerMonitor() {
                     this.loading = true;
                     try {
-                        const res = await fetch('admin_api.php?action=trigger_monitor');
-                        const data = await res.json();
+                        const { data } = await this.apiRequest('admin_api.php?action=trigger_monitor', { method: 'POST' });
                         if (data.success) {
                             this.toast(data.message || '账单轮询已完成', 'success');
                             await this.getHealth();

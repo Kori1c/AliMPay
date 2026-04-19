@@ -9,6 +9,15 @@ Options -Indexes
     RewriteRule ^codepay$ - [F,L]
     RewriteRule (^|/)(composer\.(json|lock)|\.env.*|login_attempts\.json)$ - [F,L]
     RewriteRule \.(db|sqlite|sqlite3|log|lock)$ - [F,L]
+    # Block sensitive scripts from direct public access
+    RewriteRule ^(fix_database|notify)\.php$ - [F,L]
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>
 
 <FilesMatch "^(\.env.*|composer\.(json|lock)|login_attempts\.json)$">

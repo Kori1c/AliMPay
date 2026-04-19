@@ -11,7 +11,7 @@ RUN composer install \
     --no-progress \
     --optimize-autoloader
 
-FROM php:8.1-apache
+FROM php:8.2-apache
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -39,7 +39,7 @@ COPY --from=vendor /app/vendor /var/www/html/vendor
 
 # Ensure runtime directories exist and are writable
 RUN mkdir -p data logs qrcode config \
-    && find data logs qrcode config -type d -exec chmod 775 {} + \
+    && find data logs qrcode config -type d -exec chmod 770 {} + \
     && chown -R www-data:www-data /var/www/html
 
 EXPOSE 80

@@ -12,9 +12,53 @@ date_default_timezone_set('Asia/Shanghai');
 
 // 设置响应头
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
+
+// CORS 头 - 只允许同源访问
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if ($origin !== '') {
+    $host = parse_url($origin, PHP_URL_HOST);
+    $serverHost = $_SERVER['HTTP_HOST'] ?? '';
+    if ($host === $serverHost) {
+        header('Access-Control-Allow-Origin: ' . $origin);
+    }
+}
+
+// 安全头
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: SAMEORIGIN');
+
+// 启动 session 用于认证检查
+session_start();
+
+/**
+ * 检查是否已登录管理后台
+ */
+function isAdminLoggedIn(): bool
+{
+    return isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true;
+}
+
+/**
+ * 需要管理员认证的操作
+ */
+function requiresAdminAuth(string $action): bool
+{
+    $protectedActions = ['debug', 'cleanup', 'force-start', 'trigger', 'monitor'];
+    return in_array($action, $protectedActions, true);
+}
 
 $action = $_GET['action'] ?? 'status';
+
+// 对于需要认证的操作，检查登录状态
+if (requiresAdminAuth($action) && !isAdminLoggedIn()) {
+    http_response_code(401);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Authentication required for this action',
+        'timestamp' => date('Y-m-d H:i:s')
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    exit;
+}
 
 try {
     switch ($action) {
@@ -279,10 +323,10 @@ function generateSmartSuggestions($monitorStatus, $unpaidCount, $expiredCount, $
     }
     
     // 订单相关建议
-    if ($unpaidCount > 20) {
-        $suggestions[] = "💰 High number of unpaid orders ({$unpaidCount}). Verify payment processing is working correctly.";
-    } elseif ($unpaidCount > 50) {
+    if ($unpaidCount > 50) {
         $suggestions[] = "🚨 Very high number of unpaid orders ({$unpaidCount}). Immediate attention required!";
+    } elseif ($unpaidCount > 20) {
+        $suggestions[] = "💰 High number of unpaid orders ({$unpaidCount}). Verify payment processing is working correctly.";
     }
     
     // 清理建议

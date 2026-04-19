@@ -3,7 +3,7 @@
     "description": "基于支付宝开发者账单查询的码支付平台",
     "type": "project",
     "require": {
-        "php": ">=7.4",
+        "php": ">=8.1",
         "alipaysdk/easysdk": "^2.0",
         "alipaysdk/openapi": "^3.0",
         "guzzlehttp/guzzle": "^7.0",

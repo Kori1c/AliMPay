@@ -72,7 +72,7 @@ class CodePay
             $this->logger->info('Loaded existing merchant configuration', ['merchant_id' => $this->merchantId]);
         } else {
             // Generate new merchant ID and key
-            $this->merchantId = '1001' . str_pad(rand(0, 999999999999), 12, '0', STR_PAD_LEFT);
+            $this->merchantId = '1001' . str_pad((string)random_int(0, 999999999999), 12, '0', STR_PAD_LEFT);
             $this->merchantKey = bin2hex(random_bytes(16));
             
             $config = [
@@ -178,7 +178,7 @@ class CodePay
             'received_sign' => $sign
         ]);
 
-        return $sign === $expectedSign;
+        return hash_equals($expectedSign, $sign);
     }
 
     /**
@@ -542,6 +542,56 @@ class CodePay
     }
 
     /**
+     * SSRF 防护：检查通知 URL 是否安全
+     */
+    private function isSafeNotifyUrl(string $url): bool
+    {
+        $parsed = parse_url($url);
+        if (!$parsed || !isset($parsed['scheme'], $parsed['host'])) {
+            return false;
+        }
+
+        // 只允许 http/https
+        if (!in_array(strtolower($parsed['scheme']), ['http', 'https'], true)) {
+            return false;
+        }
+
+        $host = strtolower($parsed['host']);
+
+        // 阻止内网 IP 和特殊域名
+        $blockedHosts = [
+            'localhost', '127.0.0.1', '0.0.0.0', '[::1]',
+            '169.254.169.254', // 云元数据
+            'metadata.google.internal',
+            '100.100.100.200', // 阿里云元数据
+        ];
+
+        if (in_array($host, $blockedHosts, true)) {
+            return false;
+        }
+
+        // 阻止内网 IP 段
+        $ip = gethostbyname($host);
+        if ($ip !== $host) {
+            $longIp = ip2long($ip);
+            if ($longIp !== false) {
+                // 10.0.0.0/8
+                if (($longIp & 0xFF000000) === 0x0A000000) return false;
+                // 172.16.0.0/12
+                if (($longIp & 0xFFF00000) === 0xAC100000) return false;
+                // 192.168.0.0/16
+                if (($longIp & 0xFFFF0000) === 0xC0A80000) return false;
+                // 127.0.0.0/8
+                if (($longIp & 0xFF000000) === 0x7F000000) return false;
+                // 169.254.0.0/16
+                if (($longIp & 0xFFFF0000) === 0xA9FE0000) return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Get the base URL for the current request
      * @return string
      */
@@ -888,6 +938,17 @@ class CodePay
         }
 
         try {
+            $url = $orderData['notify_url'];
+
+            // SSRF 防护：验证 URL 不指向内网地址
+            if (!$this->isSafeNotifyUrl($url)) {
+                $this->logger->warning('Notify URL blocked by SSRF protection.', [
+                    'out_trade_no' => $orderData['out_trade_no'],
+                    'notify_url' => $url
+                ]);
+                return false;
+            }
+
             $notifyData = [
                 'pid' => $orderData['pid'],
                 'trade_no' => $orderData['id'],
@@ -903,7 +964,6 @@ class CodePay
             $notifyData['sign_type'] = 'MD5';
 
             // Send notification
-            $url = $orderData['notify_url'];
             $queryString = http_build_query($notifyData);
             $fullUrl = $url . (strpos($url, '?') !== false ? '&' : '?') . $queryString;
 
@@ -912,7 +972,15 @@ class CodePay
                 'notify_url' => $orderData['notify_url']
             ]);
 
-            $response = file_get_contents($fullUrl);
+            $context = stream_context_create([
+                'http' => [
+                    'timeout' => 10,
+                    'method' => 'GET',
+                    'follow_location' => 0,
+                    'max_redirects' => 0,
+                ]
+            ]);
+            $response = @file_get_contents($fullUrl, false, $context);
             $success = ($response === 'success' || $response === 'SUCCESS');
 
             if ($success) {

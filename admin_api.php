@@ -19,6 +19,48 @@ session_set_cookie_params([
 session_start();
 header('Content-Type: application/json; charset=utf-8');
 
+/**
+ * 生成 CSRF Token
+ */
+function generateCsrfToken(): string
+{
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+/**
+ * 验证 CSRF Token
+ */
+function validateCsrfToken(): bool
+{
+    $token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? ($_POST['csrf_token'] ?? '');
+    $sessionToken = $_SESSION['csrf_token'] ?? '';
+
+    if (empty($token) || empty($sessionToken)) {
+        return false;
+    }
+
+    return hash_equals($sessionToken, $token);
+}
+
+/**
+ * 需要 CSRF 验证的操作列表
+ */
+function requiresCsrfValidation(string $action): bool
+{
+    $csrfProtectedActions = [
+        'save_config',
+        'save_merchant',
+        'regenerate_merchant_key',
+        'update_order_status',
+        'upload_qrcode',
+        'logout',
+    ];
+    return in_array($action, $csrfProtectedActions, true);
+}
+
 function respondJson(array $payload, int $statusCode = 200): void
 {
     while (ob_get_level() > 0) {
@@ -27,6 +69,12 @@ function respondJson(array $payload, int $statusCode = 200): void
 
     http_response_code($statusCode);
     header('Content-Type: application/json; charset=utf-8');
+
+    // 在响应中包含 CSRF token（用于前端获取）
+    if (isset($_SESSION['csrf_token'])) {
+        $payload['_csrf_token'] = $_SESSION['csrf_token'];
+    }
+
     echo json_encode($payload, JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -193,8 +241,32 @@ function businessQrPath(): string
     $alipayConfig = require __DIR__ . '/config/alipay.php';
     $path = $alipayConfig['payment']['business_qr_mode']['qr_code_path'] ?? (__DIR__ . '/qrcode/business_qr.png');
 
+    if ($path === '') {
+        return __DIR__ . '/qrcode/business_qr.png';
+    }
+
+    // 规范化路径
+    $path = realpath($path) ?: $path;
+
+    // 如果是相对路径，转换为绝对路径
     if ($path === '' || $path[0] !== '/') {
         $path = __DIR__ . '/' . ltrim($path, './');
+    }
+
+    // 安全检查：确保路径在项目目录内
+    $projectRoot = realpath(__DIR__);
+    $resolvedPath = realpath(dirname($path)) ?: dirname($path);
+
+    // 防止路径穿越
+    if (strpos($resolvedPath, $projectRoot) !== 0) {
+        // 路径在项目目录外，使用默认路径
+        return __DIR__ . '/qrcode/business_qr.png';
+    }
+
+    // 只允许图片扩展名
+    $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    if (!in_array($extension, ['png', 'jpg', 'jpeg', 'gif'], true)) {
+        return __DIR__ . '/qrcode/business_qr.png';
     }
 
     return $path;
@@ -252,6 +324,18 @@ if ($action === 'login') {
 // Authentication check
 if ($action !== 'login' && (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true)) {
     respondJson(['success' => false, 'message' => 'Unauthorized'], 401);
+}
+
+// CSRF validation for state-changing operations
+if ($action !== 'login' && requiresCsrfValidation($action)) {
+    if (!validateCsrfToken()) {
+        respondJson(['success' => false, 'message' => 'CSRF token validation failed, please refresh the page'], 403);
+    }
+}
+
+// Generate CSRF token for logged-in users
+if ($action !== 'login' && $action !== '') {
+    generateCsrfToken();
 }
 
 if ($action !== 'login') {
@@ -381,7 +465,6 @@ try {
                     'merchant' => [
                         'merchant_id' => $merchantConfig['merchant_id'] ?? '',
                         'merchant_key' => '********',
-                        'merchant_key_plain' => $merchantConfig['merchant_key'] ?? '',
                         'created_at' => $merchantConfig['created_at'] ?? '',
                         'rate' => $merchantConfig['rate'] ?? '96',
                         'balance' => $merchantConfig['balance'] ?? '0.00',
@@ -550,6 +633,7 @@ try {
                 throw $e;
             }
             respondJson(['success' => true, 'message' => '账单轮询已完成']);
+            break;
 
         case 'test_alipay':
             $result = ['checks' => []];

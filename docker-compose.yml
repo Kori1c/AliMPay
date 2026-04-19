@@ -9,6 +9,19 @@ services:
       - ./data:/var/www/html/data
       - ./logs:/var/www/html/logs
       - ./qrcode:/var/www/html/qrcode
-    restart: always
+    restart: unless-stopped
     environment:
       - TZ=Asia/Shanghai
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health.php?action=status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+        reservations:
+          memory: 64M
