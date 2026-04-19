@@ -16,7 +16,10 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	        (function() {
 	            var s = localStorage.getItem('darkMode');
 	            if (s === null) s = window.matchMedia('(prefers-color-scheme: dark)').matches ? '1' : '0';
-	            if (s === '1') document.documentElement.classList.add('dark');
+	            if (s === '1') {
+                document.documentElement.classList.add('dark');
+                document.body.classList.add('dark');
+            }
 	        })();
 	    </script>
 	    <script src="https://cdn.tailwindcss.com"></script>
@@ -85,12 +88,12 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	            position: relative;
 	            z-index: 1;
 	        }
-	        body.dark .mobile-bottom-nav {
+	        :root.dark .mobile-bottom-nav {
 	            background: rgba(2, 6, 23, 0.96);
 	            border-color: rgba(51, 65, 85, 0.92);
 	            box-shadow: 0 -14px 30px rgba(0, 0, 0, 0.32);
 	        }
-	        body.dark .mobile-nav-active {
+	        :root.dark .mobile-nav-active {
 	            background: linear-gradient(135deg, #2563eb, #1d4ed8);
 	            box-shadow: 0 8px 18px rgba(37, 99, 235, 0.34);
 	        }
@@ -157,80 +160,80 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	            min-height: 100vh;
 	            transition: background 180ms ease, color 180ms ease;
 	        }
-	        body.dark {
+	        :root.dark {
 	            background: radial-gradient(circle at top left, #111827, #020617);
 	            color: #f8fafc;
 	        }
-	        body.dark .text-slate-500 {
+	        :root.dark .text-slate-500 {
 	            color: #cbd5e1;
 	        }
-	        body.dark .text-slate-400 {
+	        :root.dark .text-slate-400 {
 	            color: #94a3b8;
 	        }
-	        body.dark .text-slate-600 {
+	        :root.dark .text-slate-600 {
 	            color: #cbd5e1;
 	        }
-	        body.dark .text-slate-800 {
+	        :root.dark .text-slate-800 {
 	            color: #f8fafc;
 	        }
-	        body.dark .text-slate-950,
-	        body.dark h1,
-	        body.dark h2,
-	        body.dark h3,
-	        body.dark h4,
-	        body.dark strong {
+	        :root.dark .text-slate-950,
+	        :root.dark h1,
+	        :root.dark h2,
+	        :root.dark h3,
+	        :root.dark h4,
+	        :root.dark strong {
 	            color: #f8fafc;
 	        }
-	        body.dark p,
-	        body.dark label,
-	        body.dark th,
-	        body.dark td {
+	        :root.dark p,
+	        :root.dark label,
+	        :root.dark th,
+	        :root.dark td {
 	            color: #dbe4f0;
 	        }
-	        body.dark .text-slate-300 {
+	        :root.dark .text-slate-300 {
 	            color: #dbe4f0;
 	        }
-	        body.dark input,
-	        body.dark textarea,
-	        body.dark select {
+	        :root.dark input,
+	        :root.dark textarea,
+	        :root.dark select {
 	            background: rgba(15, 23, 42, 0.88);
 	            border-color: rgba(148, 163, 184, 0.28);
 	            color: #f8fafc;
 	        }
-	        body.dark input[readonly],
-	        body.dark textarea[readonly] {
+	        :root.dark input[readonly],
+	        :root.dark textarea[readonly] {
 	            background: rgba(30, 41, 59, 0.72);
 	            color: #cbd5e1;
 	        }
-	        body.dark input::placeholder,
-	        body.dark textarea::placeholder {
+	        :root.dark input::placeholder,
+	        :root.dark textarea::placeholder {
 	            color: #64748b;
 	        }
-	        body.dark .log-terminal {
+	        :root.dark .log-terminal {
 	            background: #020617;
 	            color: #dbeafe;
 	        }
-	        body.dark .glass {
+	        :root.dark .glass {
 	            background: rgba(15, 23, 42, 0.88);
 	            border-color: rgba(148, 163, 184, 0.18);
 	        }
-	        body.dark .nav-item:not(.nav-item-active) {
+	        :root.dark .nav-item:not(.nav-item-active) {
 	            color: #cbd5e1;
 	        }
-	        body.dark .nav-item:not(.nav-item-active):hover {
+	        :root.dark .nav-item:not(.nav-item-active):hover {
 	            background: rgba(30, 41, 59, 0.82);
 	            color: #ffffff;
 	        }
-	        body.dark input:focus,
-	        body.dark textarea:focus,
-	        body.dark select:focus {
+	        :root.dark input:focus,
+	        :root.dark textarea:focus,
+	        :root.dark select:focus {
 	            border-color: #60a5fa;
 	            box-shadow: 0 0 0 3px rgba(96,165,250,0.18);
 	        }
-	        body.dark .settings-panel {
+	        :root.dark .settings-panel {
 	            background: rgba(15, 23, 42, 0.88);
 	        }
-	        body.dark .surface-muted {
+	        :root.dark .surface-muted {
 	            background: rgba(30, 41, 59, 0.54);
 	            border: 1px solid rgba(148, 163, 184, 0.14);
 	        }
@@ -249,16 +252,16 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	            color: #ffffff;
 	            box-shadow: 0 10px 22px rgba(37, 99, 235, 0.24);
 	        }
-	        body.dark .settings-tab {
+	        :root.dark .settings-tab {
 	            background: rgba(30, 41, 59, 0.9);
 	            border-color: rgba(100, 116, 139, 0.7);
 	            color: #e2e8f0;
 	        }
-	        body.dark .settings-tab:hover {
+	        :root.dark .settings-tab:hover {
 	            background: rgba(51, 65, 85, 0.96);
 	            color: #ffffff;
 	        }
-	        body.dark .settings-tab-active {
+	        :root.dark .settings-tab-active {
 	            background: #2563eb;
 	            border-color: #60a5fa;
 	            color: #ffffff;
@@ -268,21 +271,21 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	            background: rgba(248, 250, 252, 0.9);
 	            border: 1px solid rgba(226, 232, 240, 0.86);
 	        }
-	        body.dark .config-toggle-row {
+	        :root.dark .config-toggle-row {
 	            background: rgba(15, 23, 42, 0.74);
 	            border-color: rgba(71, 85, 105, 0.78);
 	        }
-	        body.dark .config-toggle-row p {
+	        :root.dark .config-toggle-row p {
 	            color: #f8fafc;
 	        }
-	        body.dark .config-toggle-row .hint-text {
+	        :root.dark .config-toggle-row .hint-text {
 	            color: #94a3b8;
 	        }
 	        .segmented-control {
 	            background: rgba(255, 255, 255, 0.76);
 	            border: 1px solid rgba(203, 213, 225, 0.82);
 	        }
-	        body.dark .segmented-control {
+	        :root.dark .segmented-control {
 	            background: rgba(15, 23, 42, 0.72);
 	            border-color: rgba(71, 85, 105, 0.82);
 	        }
@@ -293,10 +296,10 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	            background: rgba(226, 232, 240, 0.75);
 	            color: #0f172a;
 	        }
-	        body.dark .segmented-option {
+	        :root.dark .segmented-option {
 	            color: #cbd5e1;
 	        }
-	        body.dark .segmented-option:hover {
+	        :root.dark .segmented-option:hover {
 	            background: rgba(51, 65, 85, 0.85);
 	            color: #ffffff;
 	        }
@@ -331,26 +334,26 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	        .floating-save button {
 	            border-radius: 8px;
 	        }
-	        body.dark thead tr {
+	        :root.dark thead tr {
 	            background: rgba(15, 23, 42, 0.96) !important;
 	        }
-	        body.dark thead th {
+	        :root.dark thead th {
 	            color: #cbd5e1 !important;
 	            border-color: rgba(148, 163, 184, 0.18);
 	        }
-	        body.dark tbody tr {
+	        :root.dark tbody tr {
 	            border-color: rgba(148, 163, 184, 0.12);
 	        }
-	        body.dark tbody tr:hover {
+	        :root.dark tbody tr:hover {
 	            background: rgba(30, 41, 59, 0.42) !important;
 	        }
-	        body.dark .empty-state {
+	        :root.dark .empty-state {
 	            color: #94a3b8 !important;
 	        }
-	        body.dark .metric-label {
+	        :root.dark .metric-label {
 	            color: #cbd5e1 !important;
 	        }
-	        body.dark .metric-value {
+	        :root.dark .metric-value {
 	            color: #f8fafc !important;
 	        }
 
@@ -435,8 +438,8 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	                padding: 14px;
 	                box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
 	            }
-	            body.dark .orders-table tr,
-	            body.dark .recent-orders-table tr {
+	            :root.dark .orders-table tr,
+	            :root.dark .recent-orders-table tr {
 	                background: rgba(15, 23, 42, 0.86);
 	                border-color: rgba(71, 85, 105, 0.7);
 	            }
@@ -476,8 +479,8 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	                padding: 8px 10px !important;
 	                margin-bottom: 12px;
 	            }
-	            body.dark .order-price-cell,
-	            body.dark .order-paid-cell {
+	            :root.dark .order-price-cell,
+	            :root.dark .order-paid-cell {
 	                background: rgba(30, 41, 59, 0.72);
 	            }
 	            .order-price-cell {
