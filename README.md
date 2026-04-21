@@ -60,6 +60,7 @@
 - Composer
 - SQLite 扩展
 - GD 扩展
+- ZIP 扩展
 - Apache 或 Nginx
 
 ## 快速开始
@@ -88,6 +89,33 @@ cp config/alipay.example.php config/alipay.php
 
 ```bash
 docker compose up -d --build
+```
+
+如果你只是想直接部署，不想自己本地构建镜像，也可以直接使用官方镜像：
+
+```bash
+docker pull ghcr.io/kori1c/alimpay:latest
+```
+
+示例 `docker-compose.yml`：
+
+```yaml
+services:
+  alimpay:
+    image: ghcr.io/kori1c/alimpay:latest
+    container_name: alimpay-app
+    ports:
+      - "8080:80"
+    volumes:
+      - ./config:/var/www/html/config
+      - ./data:/var/www/html/data
+      - ./logs:/var/www/html/logs
+      - ./qrcode:/var/www/html/qrcode
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+    command: >
+      sh -c "nohup php /var/www/html/container_monitor.php > /var/www/html/logs/monitor.log 2>&1 & apache2-foreground"
 ```
 
 启动后访问：
@@ -166,6 +194,22 @@ admin
 - 轮询间隔
 - 查询历史账单时间范围
 - 是否自动处理过期订单
+
+### 第五步：按需使用“备份 / 恢复”
+
+商户配置页右下角现在已经支持：
+
+- 导出备份
+- 恢复备份
+
+备份会包含：
+
+- `config/alipay.php`
+- `config/codepay.json`
+- `data/codepay.db`
+- 经营码图片
+
+恢复前系统会自动创建一份当前现场快照，避免误操作后无法回滚。
 
 ## 经营码模式说明
 
@@ -279,6 +323,48 @@ docker compose down
 git pull
 docker compose up -d --build
 ```
+
+## Release 说明
+
+当前仓库已经内置 GitHub Actions 自动发版。
+
+规则是：
+
+- 每次 push 到 `main`
+- 如果当前提交还没有版本 tag
+- 系统会自动按 `vX.Y.Z` 的补丁号递增创建一个新的 GitHub Release
+
+例如：
+
+- `v1.0.2`
+- 下一次推送到 `main` 后会自动生成 `v1.0.3`
+
+对应工作流文件：
+
+- [`.github/workflows/release.yml`](.github/workflows/release.yml)
+- [`.github/workflows/docker-image.yml`](.github/workflows/docker-image.yml)
+
+## Docker 镜像发布
+
+仓库现在会自动构建并发布 GitHub Container Registry 镜像：
+
+- 推送到 `main` 时，发布 `latest`
+- 推送版本 tag 时，发布对应版本标签
+- 每次发布也会附带一个 `sha-提交哈希` 标签，方便排查和回滚
+
+镜像地址：
+
+```text
+ghcr.io/kori1c/alimpay
+```
+
+常见标签示例：
+
+- `ghcr.io/kori1c/alimpay:latest`
+- `ghcr.io/kori1c/alimpay:v1.0.4`
+- `ghcr.io/kori1c/alimpay:sha-2930b85`
+
+首次启用后，如果 GitHub Container Registry 包默认不是公开可见，需要在 GitHub 包设置里把它改成 Public。
 
 ## 不使用 Docker 的部署方式
 
@@ -492,6 +578,11 @@ GET /api.php?act=orders&pid=商户ID&key=商户密钥&limit=20
 GET /api.php?act=query&pid=商户ID&key=商户密钥
 ```
 
+这个接口现在主要用于兼容旧的 CodePay 风格对接。
+
+当前版本更重要的商户信息来源仍然是后台“商户配置 (CodePay)”页面。  
+另外，后台里原先那个“商户余额”展示字段已经移除，不再作为后台配置项维护。
+
 ### 支付回调说明
 
 订单支付成功后，系统会向你下单时传入的 `notify_url` 发起通知。
@@ -564,7 +655,9 @@ success
 7. 打开支付页
 8. 完成支付
 9. 确认订单变为已支付
-10. 再放一笔订单超时，确认会变成已过期
+10. 连续创建几笔同金额订单，确认经营码偏移金额正常工作
+11. 再放一笔订单超时，确认会变成已过期
+12. 导出一次备份，再恢复一次，确认配置、订单和经营码都能回来
 
 ## 常见问题
 
@@ -587,6 +680,11 @@ success
 
 当前版本已经做了防缓存处理。  
 如果浏览器还显示旧图，先强刷页面，再检查后台预览是否已更新。
+
+### 5. 为什么 push 到 main 后会自动出现新的 Release？
+
+因为仓库已经配置了自动发版工作流。  
+只要你把代码推到 `main`，并且当前提交还没有版本 tag，GitHub Actions 就会自动创建一个新的 patch 版本 release。
 
 ## 安全提醒
 
