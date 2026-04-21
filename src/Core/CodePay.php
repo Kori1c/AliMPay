@@ -179,22 +179,35 @@ class CodePay
             return false;
         }
 
-        $sign = $params['sign'];
-        
+        $receivedSign = strtolower((string)$params['sign']);
+
         // Remove sign and sign_type from params
         unset($params['sign'], $params['sign_type']);
-        
-        // Generate sign string according to CodePay protocol
-        $signStr = $this->generateSignString($params);
-        $expectedSign = md5($signStr . $this->merchantKey);
-        
-        $this->logger->debug('Validating signature according to CodePay protocol.', [
-            'string_to_sign' => $signStr,
-            'expected_sign' => $expectedSign,
-            'received_sign' => $sign
-        ]);
 
-        return hash_equals($expectedSign, $sign);
+        $signVariants = $this->generateSignVariants($params);
+        foreach ($signVariants as $variantName => $signStr) {
+            $expectedSign = md5($signStr . $this->merchantKey);
+
+            $this->logger->debug('Validating signature according to CodePay protocol.', [
+                'variant' => $variantName,
+                'string_to_sign' => $signStr,
+                'expected_sign' => $expectedSign,
+                'received_sign' => $receivedSign
+            ]);
+
+            if (hash_equals($expectedSign, $receivedSign)) {
+                if ($variantName !== 'standard') {
+                    $this->logger->info('Accepted compatible signature variant.', [
+                        'variant' => $variantName,
+                        'is_notification' => $isNotification
+                    ]);
+                }
+
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -217,6 +230,48 @@ class CodePay
             $parts[] = $key . '=' . $value;
         }
         
+        return implode('&', $parts);
+    }
+
+    /**
+     * Generate compatible sign string variants for legacy CodePay clients.
+     */
+    private function generateSignVariants(array $params): array
+    {
+        $variants = [];
+
+        $variants['standard'] = $this->buildSignString($params, false, false);
+        $variants['include_empty'] = $this->buildSignString($params, true, false);
+        $variants['urlencode_values'] = $this->buildSignString($params, false, true);
+        $variants['urlencode_include_empty'] = $this->buildSignString($params, true, true);
+
+        return array_filter($variants, static function ($signStr) {
+            return $signStr !== null;
+        });
+    }
+
+    /**
+     * Build a sign string with optional empty-value retention and URL encoding.
+     */
+    private function buildSignString(array $params, bool $includeEmptyValues, bool $encodeValues): ?string
+    {
+        if (!$includeEmptyValues) {
+            $params = array_filter($params, function ($value) {
+                return $value !== '' && $value !== null;
+            });
+        }
+
+        ksort($params);
+
+        if ($params === []) {
+            return null;
+        }
+
+        $parts = [];
+        foreach ($params as $key => $value) {
+            $parts[] = $key . '=' . ($encodeValues ? urlencode((string)$value) : $value);
+        }
+
         return implode('&', $parts);
     }
 

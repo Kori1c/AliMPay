@@ -24,6 +24,7 @@ try {
     $params = [
         'pid' => $_GET['pid'] ?? $_POST['pid'] ?? '',
         'type' => $_GET['type'] ?? $_POST['type'] ?? '',
+        'device' => $_GET['device'] ?? $_POST['device'] ?? '',
         'out_trade_no' => $_GET['out_trade_no'] ?? $_POST['out_trade_no'] ?? '',
         'notify_url' => $_GET['notify_url'] ?? $_POST['notify_url'] ?? '',
         'return_url' => $_GET['return_url'] ?? $_POST['return_url'] ?? '',

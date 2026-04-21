@@ -14,6 +14,7 @@ try {
     $params = [
         'pid' => $requestData['pid'] ?? '',
         'type' => $requestData['type'] ?? '',
+        'device' => $requestData['device'] ?? '',
         'out_trade_no' => $requestData['out_trade_no'] ?? '',
         'notify_url' => $requestData['notify_url'] ?? '',
         'return_url' => $requestData['return_url'] ?? '',

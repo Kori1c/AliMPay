@@ -792,6 +792,7 @@ try {
             $params = [
                 'pid' => $_POST['pid'] ?? '',
                 'type' => $_POST['type'] ?? '',
+                'device' => $_POST['device'] ?? '',
                 'out_trade_no' => $_POST['out_trade_no'] ?? '',
                 'notify_url' => $_POST['notify_url'] ?? '',
                 'return_url' => $_POST['return_url'] ?? '',
