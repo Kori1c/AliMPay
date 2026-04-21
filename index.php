@@ -40,6 +40,9 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	        .page-panel {
 	            animation: fadeUp 220ms ease-out both;
 	        }
+	        .settings-content-card {
+	            animation: fadeUp 220ms ease-out both;
+	        }
 	        .motion-card {
 	            transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
 	        }
@@ -239,10 +242,12 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	            background: rgba(255, 255, 255, 0.72);
 	            border-color: rgba(203, 213, 225, 0.86);
 	            color: #334155;
+	            transition: background-color 180ms ease, color 180ms ease, transform 180ms ease, border-color 180ms ease;
 	        }
 	        .settings-tab:hover {
 	            background: rgba(241, 245, 249, 0.96);
 	            color: #0f172a;
+	            transform: translateY(-1px);
 	        }
 	        .settings-tab-active {
 	            background: #2563eb;
@@ -305,6 +310,60 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	            background: #2563eb;
 	            color: #ffffff;
 	            box-shadow: 0 8px 18px rgba(37, 99, 235, 0.24);
+	        }
+	        .payment-mode-toggle {
+	            position: relative;
+	            background: rgba(248, 250, 252, 0.92);
+	            border: 1px solid rgba(226, 232, 240, 0.9);
+	            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+	        }
+	        .payment-mode-slider {
+	            position: absolute;
+	            top: 6px;
+	            bottom: 6px;
+	            left: 6px;
+	            width: calc(50% - 6px);
+	            border-radius: 14px;
+	            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+	            box-shadow: 0 10px 22px rgba(37, 99, 235, 0.22);
+	            transition: transform 220ms cubic-bezier(.22, 1, .36, 1), box-shadow 180ms ease;
+	        }
+	        .payment-mode-button {
+	            position: relative;
+	            z-index: 1;
+	            color: #475569;
+	            transition: color 180ms ease, transform 180ms ease;
+	        }
+	        .payment-mode-button:hover {
+	            color: #0f172a;
+	        }
+	        .payment-mode-button.payment-mode-button-active {
+	            color: #ffffff;
+	        }
+	        .payment-mode-button.payment-mode-button-active:hover {
+	            color: #ffffff;
+	            transform: translateY(-1px);
+	        }
+	        .dark body, body.dark .payment-mode-toggle {
+	            background: rgba(15, 23, 42, 0.76);
+	            border-color: rgba(71, 85, 105, 0.82);
+	            box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08);
+	        }
+	        .dark body, body.dark .payment-mode-slider {
+	            background: linear-gradient(135deg, #3b82f6, #2563eb);
+	            box-shadow: 0 10px 22px rgba(37, 99, 235, 0.28);
+	        }
+	        .dark body, body.dark .payment-mode-button {
+	            color: #cbd5e1;
+	        }
+	        .dark body, body.dark .payment-mode-button:hover {
+	            color: #ffffff;
+	        }
+	        .dark body, body.dark .payment-mode-button.payment-mode-button-active {
+	            color: #ffffff;
+	        }
+	        .dark body, body.dark .payment-mode-button.payment-mode-button-active:hover {
+	            color: #ffffff;
 	        }
 	        .monitor-toolbar {
 	            min-width: 0;
@@ -658,8 +717,11 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	                            <span class="status-dot w-2 h-2 rounded-full" :class="monitorStatusDotClass"></span>
                             <span class="monitor-label" x-text="monitorStatusText"></span>
                         </div>
-                        <button @click="refreshData()" class="glass p-2 rounded-xl hover:bg-white/50">
-                            <i data-lucide="refresh-cw" class="w-5 h-5" :class="{ 'animate-spin': loading }"></i>
+                        <button @click="refreshData(true)"
+                                :disabled="refreshing"
+                                :class="refreshing ? 'scale-95 bg-blue-50 text-blue-600 shadow-lg shadow-blue-500/15 dark:bg-blue-500/10 dark:text-blue-200' : 'hover:bg-white/50'"
+                                class="glass p-2 rounded-xl transition disabled:cursor-wait disabled:opacity-100">
+                            <i data-lucide="refresh-cw" class="w-5 h-5 transition-transform" :class="{ 'animate-spin': refreshing }"></i>
                         </button>
                     </div>
                 </header>
@@ -814,8 +876,8 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                 </div>
 
 		                <div x-show="activeTab === 'settings'" class="page-panel max-w-4xl mx-auto space-y-6" x-cloak>
-		                    <div class="glass rounded-2xl p-3">
-		                        <div class="grid grid-cols-2 gap-2 md:grid-cols-4">
+			                    <div class="glass rounded-2xl p-3">
+			                        <div class="grid grid-cols-2 gap-2 md:grid-cols-4">
 		                            <button type="button" @click="settingsSection = 'merchant'" :class="settingsTabClass('merchant')" class="rounded-xl border px-3 py-2.5 text-xs font-bold transition">商户配置 (CodePay)</button>
 		                            <button type="button" @click="settingsSection = 'alipay'" :class="settingsTabClass('alipay')" class="rounded-xl border px-3 py-2.5 text-xs font-bold transition">支付宝连接</button>
 		                            <button type="button" @click="settingsSection = 'payment'" :class="settingsTabClass('payment')" class="rounded-xl border px-3 py-2.5 text-xs font-bold transition">收款模式</button>
@@ -824,7 +886,8 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 		                    </div>
 		                    <template x-if="editConfig.app_id !== undefined">
 		                        <div class="space-y-6">
-			                    <div x-show="settingsSection === 'alipay'" x-transition id="alipay-config-card" class="glass motion-card scroll-mt-6 rounded-3xl p-8 space-y-6">
+				                    <template x-if="settingsSection === 'alipay'">
+				                    <div id="alipay-config-card" class="glass motion-card settings-content-card scroll-mt-6 rounded-3xl p-8 space-y-6">
                         <div class="flex items-center space-x-4 pb-4 border-b border-slate-200/50 dark:border-slate-800/50">
                             <div class="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
                                 <i data-lucide="link" class="text-blue-600 w-5 h-5"></i>
@@ -858,7 +921,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                         </div>
                         <div class="flex items-center gap-3 pt-2">
                             <button @click="testAlipay()" :disabled="alipayTesting" class="flex shrink-0 items-center gap-2 rounded-xl bg-green-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-green-500/20 transition hover:bg-green-700 disabled:opacity-50">
-                                <i data-lucide="plug" class="w-4 h-4"></i>
+                                <i data-lucide="shield-check" class="w-4 h-4"></i>
                                 <span x-text="alipayTesting ? '测试中...' : '测试连接'"></span>
                             </button>
                             <div x-show="alipayTestResults.length" x-cloak class="relative">
@@ -916,31 +979,49 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                                 </div>
                             </div>
                         </div>
-                    </div>
+	                    </div>
+	                    </template>
 
-			                    <div x-show="settingsSection === 'payment'" x-transition id="payment-config-card" class="glass motion-card scroll-mt-6 rounded-3xl p-8 space-y-6">
-                        <div class="flex items-center space-x-4 pb-4 border-b border-slate-200/50 dark:border-slate-800/50">
-                            <div class="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center">
-                                <i data-lucide="qr-code" class="text-green-600 w-5 h-5"></i>
-                            </div>
-                            <div>
-                                <h3 class="text-lg font-bold">收款模式</h3>
-                                <p class="text-xs text-slate-400">经营码 / 转账收款配置</p>
-                            </div>
-                        </div>
-	                        <div class="config-toggle-row flex items-center justify-between p-4 rounded-xl">
-	                            <div>
-	                                <p class="font-semibold text-sm">经营码收款模式</p>
-	                                <p class="hint-text text-xs text-slate-500 mt-0.5">通过金额+时间匹配订单，无需备注</p>
+	                    <template x-if="settingsSection === 'payment'">
+	                    <div id="payment-config-card" class="glass motion-card settings-content-card scroll-mt-6 rounded-3xl p-8 space-y-6">
+	                        <div class="flex flex-col gap-4 pb-4 border-b border-slate-200/50 dark:border-slate-800/50 md:flex-row md:items-center md:justify-between">
+	                            <div class="flex items-center space-x-4">
+	                                <div class="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center">
+	                                    <i data-lucide="qr-code" class="text-green-600 w-5 h-5"></i>
+	                                </div>
+	                                <div>
+	                                    <h3 class="text-lg font-bold">收款模式</h3>
+	                                    <p class="text-xs text-slate-400">经营码 / 转账收款配置</p>
+	                                </div>
 	                            </div>
-                            <button type="button" @click.prevent.stop="toggleBusinessQrMode()"
-                                    :class="businessQrModeEnabled ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'"
-                                    class="relative w-12 h-6 rounded-full">
-                                <span :class="businessQrModeEnabled ? 'translate-x-6' : 'translate-x-0.5'" class="absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow"></span>
-                            </button>
-                        </div>
-                        <template x-if="businessQrModeEnabled">
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-5 pl-2">
+	                            <div class="payment-mode-toggle inline-flex w-full rounded-2xl p-1.5 md:w-auto md:min-w-[320px]">
+	                                <span
+	                                    aria-hidden="true"
+	                                    class="payment-mode-slider"
+	                                    :style="businessQrModeEnabled ? 'transform: translateX(100%);' : 'transform: translateX(0%);'"
+	                                ></span>
+	                                <button
+	                                    type="button"
+	                                    @click.prevent.stop="setPaymentMode('transfer')"
+	                                    :class="businessQrModeEnabled ? 'payment-mode-button' : 'payment-mode-button payment-mode-button-active'"
+	                                    class="payment-mode-button flex-1 rounded-xl px-4 py-3 text-left"
+	                                >
+	                                    <span class="block text-sm font-bold">转账模式</span>
+	                                    <span class="mt-1 block text-[11px] opacity-80">付款带备注，按订单号匹配</span>
+	                                </button>
+	                                <button
+	                                    type="button"
+	                                    @click.prevent.stop="setPaymentMode('business_qr')"
+	                                    :class="businessQrModeEnabled ? 'payment-mode-button payment-mode-button-active' : 'payment-mode-button'"
+	                                    class="payment-mode-button flex-1 rounded-xl px-4 py-3 text-left"
+	                                >
+	                                    <span class="block text-sm font-bold">经营码模式</span>
+	                                    <span class="mt-1 block text-[11px] opacity-80">金额加时间匹配，无需备注</span>
+	                                </button>
+	                            </div>
+	                        </div>
+	                        <template x-if="businessQrModeEnabled">
+	                            <div class="grid grid-cols-1 md:grid-cols-3 gap-5 pl-2">
                                 <div class="space-y-1.5">
                                     <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">金额偏移 (元)</label>
                                     <input type="number" step="0.01" x-model="editConfig.payment.business_qr_mode.amount_offset" class="w-full px-4 py-2.5 rounded-xl bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 font-mono text-sm">
@@ -960,62 +1041,70 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	                                </div>
 	                            </div>
 	                        </template>
-		                        <div class="config-toggle-row flex items-center justify-between p-4 rounded-xl">
-		                            <div>
-		                                <p class="font-semibold text-sm">防风控转账 URL</p>
-	                                <p class="hint-text text-xs text-slate-500 mt-0.5">多层嵌套 scheme，降低转账链接触发风控概率</p>
+	                        <template x-if="!businessQrModeEnabled">
+	                            <div class="space-y-6">
+			                            <div class="config-toggle-row flex items-center justify-between p-4 rounded-xl">
+			                                <div>
+			                                    <p class="font-semibold text-sm">防风控转账 URL</p>
+		                                    <p class="hint-text text-xs text-slate-500 mt-0.5">多层嵌套 scheme，降低转账链接触发风控概率</p>
+		                                </div>
+	                                <button type="button" @click.prevent.stop="toggleAntiRiskUrl()"
+	                                        :class="antiRiskUrlEnabled ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'"
+	                                        class="relative w-12 h-6 rounded-full">
+		                                    <span :class="antiRiskUrlEnabled ? 'translate-x-6' : 'translate-x-0.5'" class="absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow"></span>
+		                                </button>
+		                            </div>
+		                            <template x-if="antiRiskUrlEnabled">
+		                                <div class="grid grid-cols-1 md:grid-cols-2 gap-5 pl-2">
+		                                    <div class="space-y-1.5">
+		                                        <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">外层 App ID</label>
+		                                        <input type="text" x-model="editConfig.payment.anti_risk_url.outer_app_id" class="w-full px-4 py-2.5 rounded-xl bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 font-mono text-sm">
+		                                    </div>
+		                                    <div class="space-y-1.5">
+		                                        <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">内层 App ID</label>
+		                                        <input type="text" x-model="editConfig.payment.anti_risk_url.inner_app_id" class="w-full px-4 py-2.5 rounded-xl bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 font-mono text-sm">
+		                                    </div>
+		                                    <div class="space-y-1.5">
+		                                        <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">落地页 URL</label>
+		                                        <input type="text" x-model="editConfig.payment.anti_risk_url.base_urls.mdeduct_landing" class="w-full px-4 py-2.5 rounded-xl bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 font-mono text-xs">
+		                                    </div>
+		                                    <div class="space-y-1.5">
+		                                        <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Scheme 渲染 URL</label>
+		                                        <input type="text" x-model="editConfig.payment.anti_risk_url.base_urls.render_scheme" class="w-full px-4 py-2.5 rounded-xl bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 font-mono text-xs">
+		                                    </div>
+		                                </div>
+		                            </template>
 	                            </div>
-                            <button type="button" @click.prevent.stop="toggleAntiRiskUrl()"
-                                    :class="antiRiskUrlEnabled ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'"
-                                    class="relative w-12 h-6 rounded-full">
-	                                <span :class="antiRiskUrlEnabled ? 'translate-x-6' : 'translate-x-0.5'" class="absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow"></span>
-	                            </button>
-	                        </div>
-	                        <template x-if="antiRiskUrlEnabled">
-	                            <div class="grid grid-cols-1 md:grid-cols-2 gap-5 pl-2">
-	                                <div class="space-y-1.5">
-	                                    <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">外层 App ID</label>
-	                                    <input type="text" x-model="editConfig.payment.anti_risk_url.outer_app_id" class="w-full px-4 py-2.5 rounded-xl bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 font-mono text-sm">
+	                        </template>
+	                        <template x-if="businessQrModeEnabled">
+	                            <div class="config-toggle-row p-4 rounded-xl space-y-3">
+	                                <div class="flex items-center gap-4">
+	                                    <div>
+	                                        <p class="font-semibold text-sm">经营码二维码</p>
+		                                    <p class="hint-text text-xs text-slate-500 mt-0.5">PNG/JPG，最大 2MB</p>
+	                                    </div>
+	                                    <span x-show="qrInfo.modified" x-text="qrInfo.modified" class="text-[10px] text-slate-400 font-mono"></span>
 	                                </div>
-	                                <div class="space-y-1.5">
-	                                    <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">内层 App ID</label>
-	                                    <input type="text" x-model="editConfig.payment.anti_risk_url.inner_app_id" class="w-full px-4 py-2.5 rounded-xl bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 font-mono text-sm">
-	                                </div>
-	                                <div class="space-y-1.5">
-	                                    <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">落地页 URL</label>
-	                                    <input type="text" x-model="editConfig.payment.anti_risk_url.base_urls.mdeduct_landing" class="w-full px-4 py-2.5 rounded-xl bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 font-mono text-xs">
-	                                </div>
-	                                <div class="space-y-1.5">
-	                                    <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Scheme 渲染 URL</label>
-	                                    <input type="text" x-model="editConfig.payment.anti_risk_url.base_urls.render_scheme" class="w-full px-4 py-2.5 rounded-xl bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 font-mono text-xs">
+	                                <div class="flex items-center gap-4">
+	                                    <label class="w-24 h-24 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-900/20 group" :class="uploading ? 'opacity-50 pointer-events-none' : ''">
+	                                        <i data-lucide="upload" class="w-5 h-5 text-slate-400 group-hover:text-blue-500"></i>
+	                                        <span class="text-[10px] text-slate-400 mt-1">上传</span>
+	                                        <input type="file" accept="image/png,image/jpeg,image/jpg" class="hidden" @change="uploadQrCode($event)">
+	                                    </label>
+	                                    <div x-show="qrInfo.url" class="w-24 h-24 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white">
+	                                        <img :src="qrInfo.url" :key="qrInfo.url" alt="经营码" class="w-full h-full object-contain">
+	                                    </div>
+	                                    <div x-show="!qrInfo.url" class="w-24 h-24 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center bg-slate-100 dark:bg-slate-800">
+	                                        <span class="text-[10px] text-slate-400">未上传</span>
+	                                    </div>
 	                                </div>
 	                            </div>
 	                        </template>
-                        <div class="config-toggle-row p-4 rounded-xl space-y-3">
-                            <div class="flex items-center gap-4">
-                                <div>
-                                    <p class="font-semibold text-sm">经营码二维码</p>
-	                                <p class="hint-text text-xs text-slate-500 mt-0.5">PNG/JPG，最大 2MB</p>
-                                </div>
-                                <span x-show="qrInfo.modified" x-text="qrInfo.modified" class="text-[10px] text-slate-400 font-mono"></span>
-                            </div>
-                            <div class="flex items-center gap-4">
-                                <label class="w-24 h-24 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-900/20 group" :class="uploading ? 'opacity-50 pointer-events-none' : ''">
-                                    <i data-lucide="upload" class="w-5 h-5 text-slate-400 group-hover:text-blue-500"></i>
-                                    <span class="text-[10px] text-slate-400 mt-1">上传</span>
-                                    <input type="file" accept="image/png,image/jpeg,image/jpg" class="hidden" @change="uploadQrCode($event)">
-                                </label>
-                                <div x-show="qrInfo.url" class="w-24 h-24 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white">
-                                    <img :src="qrInfo.url" :key="qrInfo.url" alt="经营码" class="w-full h-full object-contain">
-                                </div>
-                                <div x-show="!qrInfo.url" class="w-24 h-24 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center bg-slate-100 dark:bg-slate-800">
-                                    <span class="text-[10px] text-slate-400">未上传</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+	                    </div>
+	                    </template>
 
-			                    <div x-show="settingsSection === 'monitor'" x-transition id="monitor-config-card" class="glass motion-card scroll-mt-6 rounded-3xl p-8 space-y-6">
+				                    <template x-if="settingsSection === 'monitor'">
+				                    <div id="monitor-config-card" class="glass motion-card settings-content-card scroll-mt-6 rounded-3xl p-8 space-y-6">
                         <div class="flex items-center space-x-4 pb-4 border-b border-slate-200/50 dark:border-slate-800/50">
                             <div class="w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center">
                                 <i data-lucide="activity" class="text-amber-600 w-5 h-5"></i>
@@ -1053,9 +1142,11 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                                 <span :class="autoCleanupEnabled ? 'translate-x-6' : 'translate-x-0.5'" class="absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow"></span>
                             </button>
                         </div>
-                    </div>
+	                    </div>
+	                    </template>
 
-			                    <div x-show="settingsSection === 'merchant'" x-transition id="merchant-config-card" class="glass motion-card scroll-mt-6 rounded-3xl p-8 space-y-6">
+				                    <template x-if="settingsSection === 'merchant'">
+				                    <div id="merchant-config-card" class="glass motion-card settings-content-card scroll-mt-6 rounded-3xl p-8 space-y-6">
                         <div class="flex items-center space-x-4 pb-4 border-b border-slate-200/50 dark:border-slate-800/50">
                             <div class="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center">
                                 <i data-lucide="key-round" class="text-purple-600 w-5 h-5"></i>
@@ -1096,16 +1187,41 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                                 <p class="text-[10px] text-slate-400">CodePay 商户查询接口返回值</p>
                             </div>
                             <div class="space-y-1.5">
-                                <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">商户余额</label>
-                                <input type="number" min="0" step="0.01" x-model="merchantInfo.balance" class="w-full px-4 py-2.5 rounded-xl bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 font-mono text-sm">
-                                <p class="text-[10px] text-slate-400">仅用于对接查询展示</p>
-                            </div>
-                            <div class="space-y-1.5">
                                 <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">创建时间</label>
                                 <input type="text" x-model="merchantInfo.created_at" readonly class="w-full px-4 py-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 font-mono text-sm text-slate-500 cursor-not-allowed">
                             </div>
                         </div>
+                        <div class="flex justify-end pt-2">
+                            <div class="flex flex-col items-stretch gap-3 rounded-2xl border border-slate-200/70 bg-slate-50/80 px-4 py-4 dark:border-slate-700/70 dark:bg-slate-900/40 sm:flex-row sm:items-center">
+                                <div class="min-w-0 sm:mr-2">
+                                    <p class="text-sm font-semibold text-slate-700 dark:text-slate-100">备份 / 恢复</p>
+                                    <p class="text-[11px] text-slate-400">导出当前配置、订单库和经营码，恢复前会自动创建现场快照</p>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button type="button"
+                                            @click="createBackup()"
+                                            :disabled="backupLoading || restoreLoading"
+                                            class="inline-flex min-w-[112px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-center text-xs font-bold leading-none text-slate-700 transition hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:bg-slate-800">
+                                        <i data-lucide="archive" class="w-4 h-4"></i>
+                                        <span x-text="backupLoading ? '生成中...' : '导出备份'"></span>
+                                    </button>
+                                    <button type="button"
+                                            @click="$refs.backupRestoreInput.click()"
+                                            :disabled="backupLoading || restoreLoading"
+                                            class="inline-flex min-w-[112px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-center text-xs font-bold leading-none text-white shadow-sm shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-60">
+                                        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                                        <span x-text="restoreLoading ? '恢复中...' : '恢复备份'"></span>
+                                    </button>
+                                    <input type="file"
+                                           x-ref="backupRestoreInput"
+                                           accept=".zip,application/zip"
+                                           class="hidden"
+                                           @change="restoreBackup($event)">
+                                </div>
+                            </div>
+                        </div>
 	                    </div>
+	                    </template>
 	                    </div>
 	                    </template>
 
@@ -1191,6 +1307,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                 loginPass: '',
                 error: '',
                 loading: false,
+                refreshing: false,
                 activeTab: 'dashboard',
                 settingsSection: 'merchant',
                 darkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
@@ -1201,12 +1318,14 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                 antiRiskUrlEnabled: false,
                 autoCleanupEnabled: true,
                 settingsSnapshot: '',
-                merchantInfo: { merchant_id: '', merchant_key: '********', admin_password: '********', created_at: '', status: 1, rate: '96', balance: '0.00' },
+                merchantInfo: { merchant_id: '', merchant_key: '********', admin_password: '********', created_at: '', status: 1, rate: '96' },
                 realMerchantKey: '',
                 regeneratedKey: '',
                 showMerchantKey: false,
                 qrInfo: { exists: false, modified: null, url: null },
                 uploading: false,
+                backupLoading: false,
+                restoreLoading: false,
                 alipayTesting: false,
                 alipayTestResults: [],
                 showAlipayTestPopover: false,
@@ -1231,6 +1350,9 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                     });
                     this.$watch('activeTab', val => {
                         this.refreshData();
+                        this.$nextTick(() => lucide.createIcons());
+                    });
+                    this.$watch('settingsSection', () => {
                         this.$nextTick(() => lucide.createIcons());
                     });
                     if (this.isLoggedIn) {
@@ -1335,15 +1457,15 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	                    return classes[this.health.status] || 'text-slate-400';
 	                },
 
-	                settingsTabClass(id) {
-	                    if (this.settingsSection === id) {
-	                        return 'settings-tab-active';
-	                    }
+		                settingsTabClass(id) {
+		                    if (this.settingsSection === id) {
+		                        return 'settings-tab-active';
+		                    }
 
-	                    return 'settings-tab';
-	                },
+		                    return 'settings-tab';
+		                },
 
-	                orderStatusFilterClass(status) {
+		                orderStatusFilterClass(status) {
 		                    if (this.orderStatusFilter === status) {
 		                        return 'segmented-option-active';
 		                    }
@@ -1444,16 +1566,30 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                     await this.apiRequest('admin_api.php?action=logout', { method: 'POST' });
                 },
 
-                async refreshData() {
+                async refreshData(showFeedback = false) {
                     if (!this.isLoggedIn) return;
+                    const refreshStartedAt = Date.now();
+                    if (showFeedback) {
+                        this.refreshing = true;
+                    }
                     this.loading = true;
-                    if (this.activeTab === 'dashboard') await this.getStats();
-                    if (this.activeTab === 'orders') await this.getOrders(1);
-                    if (this.activeTab === 'settings') { await this.getConfig(); await this.getQrCode(); }
-                    if (this.activeTab === 'system') await this.getLogs();
-                    await this.getHealth();
-                    this.loading = false;
-                    this.$nextTick(() => lucide.createIcons());
+                    try {
+                        if (this.activeTab === 'dashboard') await this.getStats();
+                        if (this.activeTab === 'orders') await this.getOrders(1);
+                        if (this.activeTab === 'settings') { await this.getConfig(); await this.getQrCode(); }
+                        if (this.activeTab === 'system') await this.getLogs();
+                        await this.getHealth();
+                        this.$nextTick(() => lucide.createIcons());
+                    } finally {
+                        this.loading = false;
+                        if (showFeedback) {
+                            const elapsed = Date.now() - refreshStartedAt;
+                            const remaining = Math.max(0, 450 - elapsed);
+                            window.setTimeout(() => {
+                                this.refreshing = false;
+                            }, remaining);
+                        }
+                    }
                 },
 
                 async getStats() {
@@ -1568,13 +1704,18 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	                    this.autoCleanupEnabled = this.normalizeBoolean(this.editConfig.payment.auto_cleanup);
 	                },
 
-	                syncSwitchStateToConfig() {
-	                    this.editConfig.payment.business_qr_mode.enabled = this.normalizeBoolean(this.businessQrModeEnabled);
-	                    this.editConfig.payment.anti_risk_url.enabled = this.normalizeBoolean(this.antiRiskUrlEnabled);
-	                    this.editConfig.payment.auto_cleanup = this.normalizeBoolean(this.autoCleanupEnabled);
-	                },
+		                syncSwitchStateToConfig() {
+		                    this.editConfig.payment.business_qr_mode.enabled = this.normalizeBoolean(this.businessQrModeEnabled);
+		                    this.editConfig.payment.anti_risk_url.enabled = this.normalizeBoolean(this.antiRiskUrlEnabled);
+		                    this.editConfig.payment.auto_cleanup = this.normalizeBoolean(this.autoCleanupEnabled);
+		                },
 
-	                currentSettingsSnapshot() {
+		                setPaymentMode(mode) {
+		                    this.businessQrModeEnabled = mode === 'business_qr';
+		                    this.syncSwitchStateToConfig();
+		                },
+
+		                currentSettingsSnapshot() {
 	                    const alipayConfig = JSON.parse(JSON.stringify(this.editConfig));
 	                    alipayConfig.payment = alipayConfig.payment || {};
 	                    alipayConfig.payment.business_qr_mode = alipayConfig.payment.business_qr_mode || {};
@@ -1587,7 +1728,6 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	                        merchant: {
 	                            status: Number(this.merchantInfo.status),
 	                            rate: String(this.merchantInfo.rate ?? ''),
-	                            balance: String(this.merchantInfo.balance ?? ''),
 	                            admin_password: this.merchantInfo.admin_password || ''
 	                        }
 	                    });
@@ -1595,11 +1735,6 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 
 	                resetSettingsSnapshot() {
 	                    this.settingsSnapshot = this.currentSettingsSnapshot();
-	                },
-
-	                toggleBusinessQrMode() {
-	                    this.businessQrModeEnabled = !this.normalizeBoolean(this.businessQrModeEnabled);
-	                    this.editConfig.payment.business_qr_mode.enabled = this.businessQrModeEnabled;
 	                },
 
 	                toggleAntiRiskUrl() {
@@ -1626,7 +1761,6 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                         merchantParams.set('action', 'save_merchant');
                         merchantParams.set('status', this.merchantInfo.status);
                         merchantParams.set('rate', this.merchantInfo.rate || '0');
-                        merchantParams.set('balance', this.merchantInfo.balance || '0');
                         const pwd = this.merchantInfo.admin_password;
                         if (pwd && pwd !== '********') {
                             merchantParams.set('admin_password', pwd);
@@ -1710,6 +1844,60 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                         const { data } = await this.apiRequest('admin_api.php?action=get_qrcode');
                         if (data.success) this.qrInfo = data.data;
                     } catch (e) {}
+                },
+
+                async createBackup() {
+                    this.backupLoading = true;
+                    try {
+                        const { data } = await this.apiRequest('admin_api.php?action=create_backup', { method: 'POST' });
+                        if (!data.success || !data.data?.download_url) {
+                            throw new Error(data.message || '备份生成失败');
+                        }
+
+                        window.open(data.data.download_url, '_blank', 'noopener');
+                        this.toast('备份已生成，下载已开始', 'success');
+                    } catch (e) {
+                        this.toast('备份失败: ' + e.message, 'error', 5000);
+                    } finally {
+                        this.backupLoading = false;
+                    }
+                },
+
+                async restoreBackup(event) {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+
+                    if (!file.name.toLowerCase().endsWith('.zip')) {
+                        this.toast('仅支持 zip 备份文件', 'error');
+                        event.target.value = '';
+                        return;
+                    }
+
+                    const confirmed = window.confirm('恢复会覆盖当前配置、订单库和经营码。系统会先自动创建一份当前快照，确定继续吗？');
+                    if (!confirmed) {
+                        event.target.value = '';
+                        return;
+                    }
+
+                    this.restoreLoading = true;
+                    try {
+                        const fd = new FormData();
+                        fd.append('backup', file);
+                        const { data } = await this.apiRequest('admin_api.php?action=restore_backup', { method: 'POST', body: fd });
+                        if (!data.success) {
+                            throw new Error(data.message || '恢复失败');
+                        }
+
+                        await this.getConfig();
+                        await this.getQrCode();
+                        this.resetSettingsSnapshot();
+                        this.toast(`恢复成功，已自动创建恢复前快照：${data.data?.pre_restore_backup || '已保存'}`, 'success', 7000);
+                    } catch (e) {
+                        this.toast('恢复失败: ' + e.message, 'error', 6000);
+                    } finally {
+                        this.restoreLoading = false;
+                        event.target.value = '';
+                    }
                 },
 
                 async testAlipay() {

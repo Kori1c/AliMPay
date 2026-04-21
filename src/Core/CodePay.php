@@ -80,7 +80,6 @@ class CodePay
                 'merchant_key' => $this->merchantKey,
                 'created_at' => date('Y-m-d H:i:s'),
                 'status' => 1,
-                'balance' => '0.00',
                 'rate' => '96',
                 'admin_password_hash' => password_hash('admin', PASSWORD_DEFAULT),
                 'admin_password_is_default' => true
@@ -119,7 +118,8 @@ class CodePay
                 notify_url VARCHAR(255),
                 return_url VARCHAR(255),
                 status_token VARCHAR(64),
-                sitename VARCHAR(255)
+                sitename VARCHAR(255),
+                UNIQUE(pid, out_trade_no)
             );
         ");
         
@@ -144,6 +144,22 @@ class CodePay
         if (!$hasStatusToken) {
             $this->db->exec("ALTER TABLE codepay_orders ADD COLUMN status_token VARCHAR(64)");
             $this->logger->info('Added status_token column to existing table.');
+        }
+
+        $duplicateGroups = $this->db->query("
+            SELECT pid, out_trade_no, COUNT(*) AS duplicate_count
+            FROM codepay_orders
+            GROUP BY pid, out_trade_no
+            HAVING COUNT(*) > 1
+            LIMIT 1
+        ")->fetchAll();
+
+        if (empty($duplicateGroups)) {
+            $this->db->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_codepay_orders_pid_out_trade_no ON codepay_orders (pid, out_trade_no)");
+        } else {
+            $this->logger->warning('Skipped unique index creation because duplicate out_trade_no rows already exist.', [
+                'sample_duplicate' => $duplicateGroups[0]
+            ]);
         }
         
         $this->logger->info('Database table codepay_orders initialized.', [
@@ -236,7 +252,6 @@ class CodePay
                 'key' => $this->merchantKey,
                 'qq' => null,
                 'active' => (int)($merchantConfig['status'] ?? 1),
-                'money' => number_format((float)($merchantConfig['balance'] ?? 0), 2, '.', ''),
                 'account' => $this->config['transfer_user_id'] ?? 'Not Set',
                 'username' => 'Merchant',
                 'rate' => (string)($merchantConfig['rate'] ?? '96'),
@@ -272,9 +287,17 @@ class CodePay
     public function createPayment(array $params): array
     {
         $this->logger->info('Creating payment according to CodePay protocol.', ['out_trade_no' => $params['out_trade_no']]);
+        $orderLockHandle = null;
+
         try {
             // Validate required parameters
             $this->validatePaymentParams($params);
+
+            $orderLockHandle = $this->acquireOrderCreationLock((string)$params['pid'], (string)$params['out_trade_no']);
+            $existingOrder = $this->findOrderByPidAndOutTradeNo((string)$params['pid'], (string)$params['out_trade_no']);
+            if ($existingOrder !== null) {
+                return $this->buildCreatePaymentResponseFromExistingOrder($existingOrder);
+            }
             
             // Generate internal trade number
             $tradeNo = $this->generateTradeNo();
@@ -421,7 +444,88 @@ class CodePay
                 'code' => -1,
                 'msg' => $e->getMessage()
             ];
+        } finally {
+            $this->releaseOrderCreationLock($orderLockHandle);
         }
+    }
+
+    private function acquireOrderCreationLock(string $pid, string $outTradeNo)
+    {
+        $lockDir = __DIR__ . '/../../data/order_locks';
+        if (!is_dir($lockDir)) {
+            mkdir($lockDir, 0755, true);
+        }
+
+        $lockFile = $lockDir . '/' . hash('sha256', $pid . ':' . $outTradeNo) . '.lock';
+        $lockHandle = fopen($lockFile, 'c+');
+        if ($lockHandle === false) {
+            throw new \Exception('无法创建订单锁文件，请检查目录权限');
+        }
+
+        if (!flock($lockHandle, LOCK_EX)) {
+            fclose($lockHandle);
+            throw new \Exception('无法获取订单创建锁，请稍后重试');
+        }
+
+        return $lockHandle;
+    }
+
+    private function releaseOrderCreationLock($lockHandle): void
+    {
+        if (!is_resource($lockHandle)) {
+            return;
+        }
+
+        flock($lockHandle, LOCK_UN);
+        fclose($lockHandle);
+    }
+
+    private function findOrderByPidAndOutTradeNo(string $pid, string $outTradeNo): ?array
+    {
+        $order = $this->db->get('codepay_orders', '*', [
+            'pid' => $pid,
+            'out_trade_no' => $outTradeNo,
+            'ORDER' => ['add_time' => 'ASC']
+        ]);
+
+        return $order ?: null;
+    }
+
+    private function isOrderExpired(array $order): bool
+    {
+        if ((int)($order['status'] ?? 0) === 2) {
+            return true;
+        }
+
+        $timeoutSeconds = (int)($this->config['payment']['order_timeout'] ?? 300);
+        $createdAt = strtotime((string)($order['add_time'] ?? ''));
+
+        return (int)($order['status'] ?? 0) === 0
+            && $createdAt !== false
+            && $createdAt < time() - $timeoutSeconds;
+    }
+
+    private function buildCreatePaymentResponseFromExistingOrder(array $order): array
+    {
+        if ($this->isOrderExpired($order)) {
+            $this->db->update('codepay_orders', ['status' => 2], ['id' => $order['id']]);
+            return [
+                'code' => -1,
+                'msg' => '订单已过期，请使用新的订单号重新下单'
+            ];
+        }
+
+        if ((int)($order['status'] ?? 0) === 1) {
+            return [
+                'code' => -1,
+                'msg' => '订单已支付，请勿重复下单'
+            ];
+        }
+
+        $response = $this->buildPaymentPageResponse($order);
+        $response['existing_order'] = true;
+
+        return $response;
     }
 
     public function getExistingPaymentPageData(string $outTradeNo, string $statusToken): array
@@ -597,15 +701,28 @@ class CodePay
      */
     private function getBaseUrl(): string
     {
-        $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
-        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        $port = $_SERVER['SERVER_PORT'] ?? '80';
-        
-        // 如果是标准端口，不需要显示端口号
+        $forwardedProto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '';
+        $https = $_SERVER['HTTPS'] ?? '';
+        $protocol = ($forwardedProto === 'https' || $https === 'on' || $https === '1') ? 'https' : 'http';
+
+        $forwardedHost = trim((string)($_SERVER['HTTP_X_FORWARDED_HOST'] ?? ''));
+        $host = trim($forwardedHost !== '' ? $forwardedHost : (string)($_SERVER['HTTP_HOST'] ?? 'localhost'));
+        if ($host === '') {
+            $host = 'localhost';
+        }
+
+        // 代理或浏览器通常已经把端口带在 Host 头中，此时不要再重复拼接 SERVER_PORT。
+        if (strpos($host, ':') !== false) {
+            return $protocol . '://' . $host;
+        }
+
+        $forwardedPort = (string)($_SERVER['HTTP_X_FORWARDED_PORT'] ?? '');
+        $port = $forwardedPort !== '' ? $forwardedPort : (string)($_SERVER['SERVER_PORT'] ?? '80');
+
         if (($protocol === 'https' && $port === '443') || ($protocol === 'http' && $port === '80')) {
             return $protocol . '://' . $host;
         }
-        
+
         return $protocol . '://' . $host . ':' . $port;
     }
 
@@ -872,7 +989,7 @@ class CodePay
         $this->logger->info('Processing payment notification according to CodePay protocol.', ['out_trade_no' => $params['out_trade_no'] ?? 'N/A']);
         try {
             // Validate required parameters
-            $requiredParams = ['out_trade_no', 'trade_no', 'trade_status', 'name', 'money'];
+            $requiredParams = ['pid', 'out_trade_no', 'trade_no', 'trade_status', 'name', 'money'];
             foreach ($requiredParams as $param) {
                 if (!isset($params[$param])) {
                     throw new \InvalidArgumentException("Missing required parameter: {$param}");
@@ -884,13 +1001,32 @@ class CodePay
                 throw new \InvalidArgumentException('Invalid signature');
             }
 
-            // Find order and update status
+            if ($params['trade_status'] !== 'TRADE_SUCCESS') {
+                throw new \InvalidArgumentException('Invalid trade status');
+            }
+
+            // Find order and validate payload
             $order = $this->db->get('codepay_orders', '*', [
+                'pid' => $params['pid'],
                 'out_trade_no' => $params['out_trade_no']
             ]);
 
             if (!$order) {
                 throw new \Exception("Order not found: {$params['out_trade_no']}");
+            }
+
+            if (!hash_equals((string)$order['id'], (string)$params['trade_no'])) {
+                throw new \InvalidArgumentException('Notification trade_no does not match the order');
+            }
+
+            if (!hash_equals((string)$order['name'], (string)$params['name'])) {
+                throw new \InvalidArgumentException('Notification name does not match the order');
+            }
+
+            $expectedMoney = number_format((float)$order['price'], 2, '.', '');
+            $providedMoney = number_format((float)$params['money'], 2, '.', '');
+            if (!hash_equals($expectedMoney, $providedMoney)) {
+                throw new \InvalidArgumentException('Notification amount does not match the order');
             }
 
             if ($order['status'] == 1) {
@@ -901,21 +1037,12 @@ class CodePay
                 ];
             }
 
-            // Update order status
-            if ($params['trade_status'] === 'TRADE_SUCCESS') {
-                $this->db->update('codepay_orders', [
-                    'status' => 1,
-                    'pay_time' => date('Y-m-d H:i:s'),
-                    'payment_amount' => $params['money']
-                ], ['out_trade_no' => $params['out_trade_no']]);
-                
-                $this->logger->info('Order status updated to paid.', ['out_trade_no' => $params['out_trade_no']]);
-            }
+            $this->logger->warning('Rejected external payment confirmation for an unpaid order.', [
+                'out_trade_no' => $params['out_trade_no'],
+                'pid' => $params['pid']
+            ]);
 
-            return [
-                'code' => 1,
-                'msg' => 'SUCCESS'
-            ];
+            throw new \InvalidArgumentException('Unpaid orders can only be confirmed by the Alipay bill monitor');
 
         } catch (\Exception $e) {
             $this->logger->error('Failed to process notification.', ['error' => $e->getMessage(), 'out_trade_no' => $params['out_trade_no'] ?? 'N/A']);

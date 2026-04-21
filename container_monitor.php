@@ -23,6 +23,7 @@ class ImprovedLockManager {
     private $lockHandle;
     private $timeout;
     private $logger;
+    private $hasLock = false;
     
     public function __construct($lockFile, $timeout = 300) {
         $this->lockFile = $lockFile;
@@ -44,6 +45,7 @@ class ImprovedLockManager {
             }
             
             if (flock($this->lockHandle, LOCK_EX | LOCK_NB)) {
+                $this->hasLock = true;
                 $lockInfo = [
                     'pid' => getmypid(),
                     'timestamp' => time(),
@@ -68,6 +70,14 @@ class ImprovedLockManager {
     
     public function releaseLock() {
         try {
+            if (!$this->hasLock) {
+                if ($this->lockHandle) {
+                    fclose($this->lockHandle);
+                    $this->lockHandle = null;
+                }
+                return;
+            }
+
             if ($this->lockHandle) {
                 flock($this->lockHandle, LOCK_UN);
                 fclose($this->lockHandle);
@@ -77,7 +87,9 @@ class ImprovedLockManager {
             if (file_exists($this->lockFile)) {
                 unlink($this->lockFile);
             }
-            
+
+            $this->hasLock = false;
+
         } catch (Exception $e) {
             $this->logger->error('Failed to release background lock', ['error' => $e->getMessage()]);
         }

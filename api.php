@@ -38,6 +38,7 @@ class ImprovedLockManager {
     private $lockHandle;
     private $timeout;
     private $logger;
+    private $hasLock = false;
     private $maxRetries = 3;
     private static $lockCheckCache = [];
     private static $lastCacheTime = 0;
@@ -80,6 +81,7 @@ class ImprovedLockManager {
                 
                 // 使用文件锁（非阻塞）
                 if (flock($this->lockHandle, LOCK_EX | LOCK_NB)) {
+                    $this->hasLock = true;
                     // 清空文件内容
                     ftruncate($this->lockHandle, 0);
                     rewind($this->lockHandle);
@@ -127,6 +129,11 @@ class ImprovedLockManager {
      */
     public function releaseLock() {
         try {
+            if (!$this->hasLock) {
+                $this->cleanup();
+                return;
+            }
+
             if ($this->lockHandle && is_resource($this->lockHandle)) {
                 flock($this->lockHandle, LOCK_UN);
                 fclose($this->lockHandle);
@@ -136,7 +143,9 @@ class ImprovedLockManager {
             if (file_exists($this->lockFile)) {
                 unlink($this->lockFile);
             }
-            
+
+            $this->hasLock = false;
+
             $this->logger->debug('Lock released successfully', ['file' => basename($this->lockFile)]);
             
         } catch (Exception $e) {
@@ -415,6 +424,7 @@ class ImprovedLockManager {
             }
             
             if (flock($this->lockHandle, LOCK_EX | LOCK_NB)) {
+                $this->hasLock = true;
                 $lockInfo = [
                     \'pid\' => getmypid(),
                     \'timestamp\' => time(),
@@ -439,6 +449,14 @@ class ImprovedLockManager {
     
     public function releaseLock() {
         try {
+            if (!$this->hasLock) {
+                if ($this->lockHandle) {
+                    fclose($this->lockHandle);
+                    $this->lockHandle = null;
+                }
+                return;
+            }
+
             if ($this->lockHandle) {
                 flock($this->lockHandle, LOCK_UN);
                 fclose($this->lockHandle);
@@ -448,7 +466,9 @@ class ImprovedLockManager {
             if (file_exists($this->lockFile)) {
                 unlink($this->lockFile);
             }
-            
+
+            $this->hasLock = false;
+
         } catch (Exception $e) {
             $this->logger->error(\'Failed to release background lock\', [\'error\' => $e->getMessage()]);
         }
@@ -633,12 +653,9 @@ function redirectToSubmitPage(array $paymentResult) {
     </head>
     <body onload="document.getElementById('redirectForm').submit();">
         <form id="redirectForm" method="post" action="submit.php">
-            <input type="hidden" name="payment_result" value="<?php echo htmlspecialchars(json_encode($paymentResult)); ?>">
-            <?php foreach ($paymentResult as $key => $value): ?>
-                <?php if (!is_array($value)): ?>
-                    <input type="hidden" name="<?php echo htmlspecialchars($key); ?>" value="<?php echo htmlspecialchars($value); ?>">
-                <?php endif; ?>
-            <?php endforeach; ?>
+            <input type="hidden" name="resume_payment" value="1">
+            <input type="hidden" name="out_trade_no" value="<?php echo htmlspecialchars((string)($paymentResult['out_trade_no'] ?? '')); ?>">
+            <input type="hidden" name="status_token" value="<?php echo htmlspecialchars((string)($paymentResult['status_token'] ?? '')); ?>">
         </form>
         <h2>正在为您跳转到支付页面，请稍候...</h2>
         <div class="loading-spinner"></div>
@@ -679,8 +696,14 @@ try {
             'sign' => $_POST['sign'] ?? '',
             'sign_type' => $_POST['sign_type'] ?? 'MD5'
         ];
-        
+
         $paymentResult = $codePay->createPayment($params);
+        if (($paymentResult['code'] ?? -1) !== 1) {
+            ob_end_clean();
+            http_response_code(400);
+            echo json_encode($paymentResult, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+            exit;
+        }
         redirectToSubmitPage($paymentResult);
         exit;
     }

@@ -56,6 +56,8 @@ function requiresCsrfValidation(string $action): bool
         'regenerate_merchant_key',
         'update_order_status',
         'upload_qrcode',
+        'create_backup',
+        'restore_backup',
         'logout',
     ];
     return in_array($action, $csrfProtectedActions, true);
@@ -272,6 +274,195 @@ function businessQrPath(): string
     return $path;
 }
 
+function backupStorageDir(): string
+{
+    $dir = __DIR__ . '/data/backups';
+    if (!is_dir($dir)) {
+        mkdir($dir, 0755, true);
+    }
+
+    return $dir;
+}
+
+function backupSourceMap(): array
+{
+    return [
+        'config/alipay.php' => __DIR__ . '/config/alipay.php',
+        'config/codepay.json' => __DIR__ . '/config/codepay.json',
+        'data/codepay.db' => __DIR__ . '/data/codepay.db',
+        'qrcode/business_qr.png' => businessQrPath(),
+    ];
+}
+
+function sanitizeBackupName(string $name): string
+{
+    return preg_replace('/[^A-Za-z0-9._-]/', '_', $name) ?: 'backup.zip';
+}
+
+function createProjectBackup(string $reason = 'manual'): array
+{
+    if (!class_exists('ZipArchive')) {
+        throw new Exception('当前环境未启用 ZipArchive，无法创建备份');
+    }
+
+    $timestamp = date('Ymd_His');
+    $fileName = sprintf('alimpay_backup_%s_%s.zip', $reason, $timestamp);
+    $filePath = backupStorageDir() . '/' . $fileName;
+
+    $zip = new ZipArchive();
+    if ($zip->open($filePath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+        throw new Exception('创建备份文件失败');
+    }
+
+    $includedFiles = [];
+    foreach (backupSourceMap() as $entryName => $sourcePath) {
+        if (!file_exists($sourcePath)) {
+            if ($entryName === 'qrcode/business_qr.png') {
+                continue;
+            }
+            $zip->close();
+            @unlink($filePath);
+            throw new Exception("备份失败，缺少文件：{$entryName}");
+        }
+
+        if (!$zip->addFile($sourcePath, $entryName)) {
+            $zip->close();
+            @unlink($filePath);
+            throw new Exception("备份失败，无法写入文件：{$entryName}");
+        }
+
+        $includedFiles[] = $entryName;
+    }
+
+    $manifest = [
+        'project' => 'AliMPay',
+        'version' => 1,
+        'created_at' => date('Y-m-d H:i:s'),
+        'reason' => $reason,
+        'files' => $includedFiles,
+    ];
+    $zip->addFromString('manifest.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    $zip->close();
+    @chmod($filePath, 0640);
+
+    return [
+        'file_name' => $fileName,
+        'file_path' => $filePath,
+        'size' => filesize($filePath) ?: 0,
+    ];
+}
+
+function removeRuntimeLocks(): void
+{
+    foreach (glob(__DIR__ . '/data/*.lock') ?: [] as $file) {
+        @unlink($file);
+    }
+    foreach (glob(__DIR__ . '/data/order_locks/*.lock') ?: [] as $file) {
+        @unlink($file);
+    }
+}
+
+function restoreProjectBackup(string $uploadedFilePath): array
+{
+    if (!class_exists('ZipArchive')) {
+        throw new Exception('当前环境未启用 ZipArchive，无法恢复备份');
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($uploadedFilePath) !== true) {
+        throw new Exception('备份文件无法打开，请确认 zip 是否完整');
+    }
+
+    $requiredEntries = [
+        'config/alipay.php',
+        'config/codepay.json',
+        'data/codepay.db',
+    ];
+    foreach ($requiredEntries as $entry) {
+        if ($zip->locateName($entry) === false) {
+            $zip->close();
+            throw new Exception("备份文件缺少必要内容：{$entry}");
+        }
+    }
+
+    $tempDir = sys_get_temp_dir() . '/alimpay_restore_' . bin2hex(random_bytes(8));
+    if (!mkdir($tempDir, 0700, true) && !is_dir($tempDir)) {
+        $zip->close();
+        throw new Exception('创建恢复临时目录失败');
+    }
+
+    try {
+        if (!$zip->extractTo($tempDir)) {
+            throw new Exception('解压备份文件失败');
+        }
+        $zip->close();
+
+        $preRestoreBackup = createProjectBackup('pre_restore');
+
+        $targetMap = [
+            'config/alipay.php' => __DIR__ . '/config/alipay.php',
+            'config/codepay.json' => __DIR__ . '/config/codepay.json',
+            'data/codepay.db' => __DIR__ . '/data/codepay.db',
+            'qrcode/business_qr.png' => businessQrPath(),
+        ];
+
+        foreach ($targetMap as $entryName => $targetPath) {
+            $sourcePath = $tempDir . '/' . $entryName;
+            if (!file_exists($sourcePath)) {
+                continue;
+            }
+
+            $targetDir = dirname($targetPath);
+            if (!is_dir($targetDir)) {
+                mkdir($targetDir, 0755, true);
+            }
+
+            if (!copy($sourcePath, $targetPath)) {
+                throw new Exception("恢复失败，无法写入文件：{$entryName}");
+            }
+
+            @chmod($targetPath, str_ends_with($targetPath, '.php') ? 0644 : 0640);
+        }
+
+        invalidateAlipayConfigCache();
+        clearstatcache();
+        removeRuntimeLocks();
+
+        return [
+            'pre_restore_backup' => $preRestoreBackup['file_name'],
+        ];
+    } finally {
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($tempDir, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($iterator as $item) {
+            $item->isDir() ? @rmdir($item->getPathname()) : @unlink($item->getPathname());
+        }
+        @rmdir($tempDir);
+    }
+}
+
+function streamBackupFile(string $fileName): void
+{
+    $safeFileName = sanitizeBackupName($fileName);
+    $filePath = backupStorageDir() . '/' . $safeFileName;
+    if (!is_file($filePath)) {
+        throw new Exception('备份文件不存在');
+    }
+
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/zip');
+    header('Content-Length: ' . (string)filesize($filePath));
+    header('Content-Disposition: attachment; filename="' . rawurlencode($safeFileName) . '"');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    readfile($filePath);
+    exit;
+}
+
 function markExpiredOrdersForAdmin(\Medoo\Medoo $db, string $expiredThreshold): void
 {
     $db->update('codepay_orders', ['status' => 2], [
@@ -467,7 +658,6 @@ try {
                         'merchant_key' => '********',
                         'created_at' => $merchantConfig['created_at'] ?? '',
                         'rate' => $merchantConfig['rate'] ?? '96',
-                        'balance' => $merchantConfig['balance'] ?? '0.00',
                         'admin_password' => '********',
                         'status' => $merchantConfig['status'] ?? 1,
                     ]
@@ -538,13 +728,6 @@ try {
                     throw new Exception('商户费率必须在 0 到 100 之间');
                 }
                 $merchantConfig['rate'] = (string)$rate;
-            }
-            if (isset($_POST['balance'])) {
-                $balance = (float)$_POST['balance'];
-                if ($balance < 0) {
-                    throw new Exception('商户余额不能小于 0');
-                }
-                $merchantConfig['balance'] = number_format($balance, 2, '.', '');
             }
             if (isset($_POST['status'])) {
                 $merchantConfig['status'] = (int)$_POST['status'] === 1 ? 1 : 0;
@@ -618,6 +801,50 @@ try {
                     'modified' => $mtime,
                     'url' => $exists ? './qrcode_view.php?v=' . rawurlencode((string)$version) : null
                 ]
+            ]);
+            break;
+
+        case 'create_backup':
+            $backup = createProjectBackup('manual');
+            respondJson([
+                'success' => true,
+                'message' => '备份已生成',
+                'data' => [
+                    'file_name' => $backup['file_name'],
+                    'size' => $backup['size'],
+                    'download_url' => './admin_api.php?action=download_backup&file=' . rawurlencode($backup['file_name']),
+                ]
+            ]);
+            break;
+
+        case 'download_backup':
+            streamBackupFile((string)($_GET['file'] ?? ''));
+            break;
+
+        case 'restore_backup':
+            if (empty($_FILES['backup'])) {
+                throw new Exception('请选择备份文件');
+            }
+
+            $file = $_FILES['backup'];
+            if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+                throw new Exception('备份上传失败，请重新选择文件');
+            }
+
+            $originalName = (string)($file['name'] ?? 'backup.zip');
+            if (strtolower(pathinfo($originalName, PATHINFO_EXTENSION)) !== 'zip') {
+                throw new Exception('仅支持 zip 备份文件');
+            }
+
+            if (($file['size'] ?? 0) > 100 * 1024 * 1024) {
+                throw new Exception('备份文件不能超过 100MB');
+            }
+
+            $restoreResult = restoreProjectBackup($file['tmp_name']);
+            respondJson([
+                'success' => true,
+                'message' => '备份恢复成功',
+                'data' => $restoreResult,
             ]);
             break;
 

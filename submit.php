@@ -41,11 +41,6 @@ try {
             'money' => $result['money'] ?? $params['money'],
             'sitename' => $result['sitename'] ?? $params['sitename']
         ]);
-    } elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($requestData['payment_result'])) {
-        $result = json_decode($requestData['payment_result'], true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new Exception('无效的支付结果数据');
-        }
     } else {
         // 对于直接访问或GET请求，需要重新创建支付
         $logger->info('CodePay Payment Submit Request', [
@@ -93,64 +88,103 @@ try {
 	            }
 	            body {
 	                font-family: Arial, sans-serif;
-	                background-color: #f5f5f5;
+	                background: linear-gradient(180deg, #f4f7fb 0%, #eef4ff 100%);
                 margin: 0;
-                padding: 20px;
+                padding: 18px;
             }
             .container {
-                max-width: 500px;
+                max-width: 1040px;
                 margin: 0 auto;
-                background: white;
-	                border-radius: 10px;
-	                padding: 30px;
-	                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                background: rgba(255, 255, 255, 0.96);
+	                border-radius: 24px;
+	                padding: 28px;
+	                box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
 	                animation: fadeUp 240ms ease-out both;
 	            }
             .header {
                 text-align: center;
-                margin-bottom: 30px;
+                margin-bottom: 22px;
             }
             .header h1 {
                 color: #1677ff;
                 margin: 0;
             }
+            .header p {
+                margin: 8px 0 0;
+                color: #64748b;
+            }
+            .payment-layout {
+                display: grid;
+                grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
+                gap: 20px;
+                align-items: start;
+            }
+            .payment-main,
+            .payment-side {
+                min-width: 0;
+            }
             .order-info {
-                background: #f8f9fa;
+                background: linear-gradient(180deg, #f8fafc 0%, #f3f7ff 100%);
                 padding: 20px;
-                border-radius: 8px;
-                margin-bottom: 20px;
+                border-radius: 18px;
+                margin-bottom: 14px;
+                border: 1px solid rgba(191, 219, 254, 0.5);
             }
             .order-info h3 {
-                margin-top: 0;
+                margin: 0 0 14px;
                 color: #333;
             }
             .info-item {
                 display: flex;
                 justify-content: space-between;
-                margin-bottom: 10px;
+                align-items: baseline;
+                gap: 14px;
+                margin-bottom: 12px;
+            }
+            .info-item:last-child {
+                margin-bottom: 0;
             }
             .info-label {
-                color: #666;
+                color: #64748b;
+                flex: 0 0 94px;
             }
             .info-value {
                 font-weight: bold;
-                color: #333;
+                color: #1e293b;
+                text-align: right;
+                word-break: break-all;
             }
             .amount {
-                font-size: 24px;
+                font-size: 34px;
+                line-height: 1;
                 color: #ff4d4f;
+            }
+            .status-strip {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
+                margin-bottom: 14px;
             }
             .qr-code {
                 text-align: center;
-                margin: 20px 0;
+                padding: 18px 18px 16px;
+                background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+                border-radius: 20px;
+                border: 1px solid rgba(191, 219, 254, 0.52);
+            }
+            .qr-code p {
+                margin: 0 0 14px;
+                font-size: 16px;
+                font-weight: bold;
+                color: #1f2937;
             }
             .qr-code .qr-img-wrapper {
                 display: inline-block;
-                width: 220px;
-                height: 220px;
+                width: min(100%, 260px);
+                aspect-ratio: 1 / 1;
                 background: #fff;
-                border-radius: 8px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+                border-radius: 18px;
+                box-shadow: 0 10px 30px rgba(15,23,42,0.06);
 	                overflow: hidden;
 	                position: relative;
 	                animation: qrReady 260ms ease-out both;
@@ -163,51 +197,54 @@ try {
             .qr-code img {
                 width: 100%;
                 height: 100%;
-                object-fit: cover;
+                object-fit: contain;
                 object-position: center;
                 border: 1px solid #ddd;
                 background: white;
                 display: block;
             }
             .payment-tips {
-                background: #e6f7ff;
-                border: 1px solid #91d5ff;
-                border-radius: 8px;
-                padding: 15px;
-                margin-top: 20px;
+                background: #eef7ff;
+                border: 1px solid #bfdbfe;
+                border-radius: 18px;
+                padding: 16px 18px;
+                margin-top: 14px;
             }
             .payment-tips h4 {
-                margin-top: 0;
+                margin: 0 0 10px;
                 color: #1677ff;
             }
             .payment-tips ul {
-                margin: 10px 0;
-                padding-left: 20px;
+                margin: 0;
+                padding-left: 18px;
             }
             .payment-tips li {
                 margin: 5px 0;
-                color: #666;
+                color: #475569;
+                line-height: 1.5;
             }
             .alert-warning {
                 background-color: #fffbe6;
                 border-color: #ffe58f;
                 color: #d46b08;
-                padding: 10px 15px;
-                border-radius: 5px;
-                margin-bottom: 20px;
+                padding: 12px 15px;
+                border-radius: 14px;
+                margin-bottom: 16px;
             }
             .buttons {
-                text-align: center;
-                margin-top: 30px;
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 10px;
+                margin-top: 14px;
             }
 	            .btn {
 	                background: #1677ff;
 	                color: white;
                 border: none;
-                padding: 10px 20px;
-                border-radius: 5px;
+                padding: 11px 18px;
+                border-radius: 12px;
                 cursor: pointer;
-                margin: 0 10px;
 	                text-decoration: none;
 	                display: inline-block;
 	                transition: transform 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
@@ -229,9 +266,9 @@ try {
             }
             .status {
                 text-align: center;
-                margin-top: 20px;
-                padding: 10px;
-                border-radius: 5px;
+                margin-top: 0;
+                padding: 12px 14px;
+                border-radius: 14px;
                 font-weight: bold;
             }
             .status.pending {
@@ -253,18 +290,78 @@ try {
             }
             .countdown {
                 text-align: center;
-                margin: 10px 0;
-                padding: 8px;
+                margin: 0;
+                padding: 12px 14px;
                 background: #fff1f0;
                 color: #cf1322;
                 border: 1px solid #ffa39e;
-                border-radius: 5px;
+                border-radius: 14px;
                 font-weight: bold;
             }
             .countdown.expired {
                 background: #f5f5f5;
                 color: #8c8c8c;
                 border: 1px solid #d9d9d9;
+            }
+            .side-actions {
+                margin-top: 14px;
+            }
+            @media (max-width: 900px) {
+                body {
+                    padding: 10px;
+                }
+                .container {
+                    padding: 18px;
+                    border-radius: 18px;
+                }
+                .payment-layout {
+                    grid-template-columns: 1fr;
+                    gap: 14px;
+                }
+                .status-strip {
+                    grid-template-columns: 1fr;
+                }
+                .side-actions {
+                    margin-top: 12px;
+                }
+                .qr-code .qr-img-wrapper {
+                    width: min(100%, 220px);
+                }
+                .amount {
+                    font-size: 28px;
+                }
+            }
+            @media (max-width: 640px) {
+                .header {
+                    margin-bottom: 16px;
+                }
+                .header h1 {
+                    font-size: 28px;
+                }
+                .order-info,
+                .qr-code,
+                .payment-tips {
+                    padding: 16px;
+                    border-radius: 16px;
+                }
+                .info-item {
+                    align-items: flex-start;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+                .info-label,
+                .info-value {
+                    flex: none;
+                    text-align: left;
+                }
+                .buttons {
+                    flex-direction: column;
+                }
+                .btn {
+                    width: 100%;
+                    box-sizing: border-box;
+                    text-align: center;
+                }
             }
         </style>
     </head>
@@ -281,79 +378,89 @@ try {
             </div>
             <?php endif; ?>
             
-            <div class="order-info">
-                <h3>订单信息</h3>
-                <div class="info-item">
-                    <span class="info-label">商品名称：</span>
-                    <span class="info-value"><?php echo htmlspecialchars($params['name']); ?></span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">订单号：</span>
-                    <span class="info-value"><?php echo htmlspecialchars($params['out_trade_no']); ?></span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">内部交易号：</span>
-                    <span class="info-value"><?php echo htmlspecialchars($result['trade_no']); ?></span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">支付金额：</span>
-                    <span class="info-value amount">¥<?php echo htmlspecialchars(number_format($displayAmount, 2)); ?></span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">支付方式：</span>
-                    <span class="info-value">支付宝</span>
-                </div>
-                <?php if (!empty($params['sitename'])): ?>
-                <div class="info-item">
-                    <span class="info-label">商户名称：</span>
-                    <span class="info-value"><?php echo htmlspecialchars($params['sitename']); ?></span>
-                </div>
-                <?php endif; ?>
-            </div>
-            
-            <div class="status pending" id="paymentStatus">
-                等待支付...
-            </div>
-            
-            <div class="countdown" id="countdownDisplay">
-                剩余支付时间：<span id="countdown">05:00</span>
-            </div>
-            
-            <?php if (isset($result['business_qr_mode']) && $result['business_qr_mode']): ?>
-                <div class="qr-code">
-                    <p>请使用支付宝扫描下方二维码完成支付</p>
-                    <div class="qr-img-wrapper">
-                        <img src="<?php echo htmlspecialchars($result['qr_code_url']); ?>" alt="经营码收款">
+            <div class="payment-layout">
+                <div class="payment-main">
+                    <div class="order-info">
+                        <h3>订单信息</h3>
+                        <div class="info-item">
+                            <span class="info-label">商品名称：</span>
+                            <span class="info-value"><?php echo htmlspecialchars($params['name']); ?></span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">订单号：</span>
+                            <span class="info-value"><?php echo htmlspecialchars($params['out_trade_no']); ?></span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">内部交易号：</span>
+                            <span class="info-value"><?php echo htmlspecialchars($result['trade_no']); ?></span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">支付金额：</span>
+                            <span class="info-value amount">¥<?php echo htmlspecialchars(number_format($displayAmount, 2)); ?></span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">支付方式：</span>
+                            <span class="info-value">支付宝</span>
+                        </div>
+                        <?php if (!empty($params['sitename'])): ?>
+                        <div class="info-item">
+                            <span class="info-label">商户名称：</span>
+                            <span class="info-value"><?php echo htmlspecialchars($params['sitename']); ?></span>
+                        </div>
+                        <?php endif; ?>
                     </div>
-                </div>
-                <div class="payment-tips">
-                    <h4>支付提示</h4>
-                    <ul>
-                        <?php foreach ($result['payment_tips'] as $tip): ?>
-                            <li><?php echo htmlspecialchars($tip); ?></li>
-                        <?php endforeach; ?>
-                    </ul>
-                </div>
-            <?php else: ?>
-                <div class="qr-code">
-                    <p>请使用支付宝扫描下方二维码完成支付</p>
-                    <div class="qr-img-wrapper">
-                        <img src="data:image/png;base64,<?php echo $result['qr_code']; ?>" alt="支付宝支付">
-                    </div>
-                </div>
-                <div class="payment-tips">
-                    <h4>支付提示</h4>
-                    <ul>
-                        <li>请在5分钟内完成支付，超时订单将自动作废。</li>
-                        <li>支付时无需填写备注，系统会自动确认。</li>
-                        <li>支付完成后，页面将自动跳转。</li>
-                    </ul>
-                </div>
-            <?php endif; ?>
 
-            <div class="buttons">
-                <a href="<?php echo htmlspecialchars($result['payment_url']); ?>" class="btn" id="openInAlipay">打开支付宝App支付</a>
-                <button class="btn btn-secondary" onclick="checkOrderStatus()">我已支付，查询订单状态</button>
+                    <div class="status-strip">
+                        <div class="status pending" id="paymentStatus">
+                            等待支付...
+                        </div>
+                        
+                        <div class="countdown" id="countdownDisplay">
+                            剩余支付时间：<span id="countdown">05:00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="payment-side">
+                    <?php if (isset($result['business_qr_mode']) && $result['business_qr_mode']): ?>
+                        <div class="qr-code">
+                            <p>请使用支付宝扫描下方二维码完成支付</p>
+                            <div class="qr-img-wrapper">
+                                <img src="<?php echo htmlspecialchars($result['qr_code_url']); ?>" alt="经营码收款">
+                            </div>
+                        </div>
+                        <div class="payment-tips">
+                            <h4>支付提示</h4>
+                            <ul>
+                                <?php foreach ($result['payment_tips'] as $tip): ?>
+                                    <li><?php echo htmlspecialchars($tip); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    <?php else: ?>
+                        <div class="qr-code">
+                            <p>请使用支付宝扫描下方二维码完成支付</p>
+                            <div class="qr-img-wrapper">
+                                <img src="data:image/png;base64,<?php echo $result['qr_code']; ?>" alt="支付宝支付">
+                            </div>
+                        </div>
+                        <div class="payment-tips">
+                            <h4>支付提示</h4>
+                            <ul>
+                                <li>请在5分钟内完成支付，超时订单将自动作废。</li>
+                                <li>支付时无需填写备注，系统会自动确认。</li>
+                                <li>支付完成后，页面将自动跳转。</li>
+                            </ul>
+                        </div>
+                    <?php endif; ?>
+
+                    <div class="buttons side-actions">
+                        <?php if (!(isset($result['business_qr_mode']) && $result['business_qr_mode'])): ?>
+                        <a href="<?php echo htmlspecialchars($result['payment_url']); ?>" class="btn" id="openInAlipay">打开支付宝App支付</a>
+                        <?php endif; ?>
+                        <button class="btn btn-secondary" onclick="checkOrderStatus()">我已支付，查询订单状态</button>
+                    </div>
+                </div>
             </div>
         </div>
 
