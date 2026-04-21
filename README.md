@@ -18,10 +18,6 @@ AliMPay 是一个基于支付宝账单查询的码支付系统，兼容 CodePay 
 - 备份与恢复
 - Docker 部署
 
-仓库地址：
-
-- [https://github.com/Kori1c/AliMPay](https://github.com/Kori1c/AliMPay)
-
 ## 部署方式
 
 推荐直接使用 Docker 部署。
@@ -80,7 +76,7 @@ docker compose up -d --build
 
 ### 方式二：直接使用官方镜像
 
-如果你不想本地构建镜像，可以直接使用 GitHub Container Registry 镜像：
+如果你不想本地构建镜像，可以直接使用官方镜像：
 
 ```bash
 docker pull ghcr.io/kori1c/alimpay:latest
@@ -117,7 +113,6 @@ ghcr.io/kori1c/alimpay
 
 - `ghcr.io/kori1c/alimpay:latest`
 - `ghcr.io/kori1c/alimpay:v1.0.4`
-- `ghcr.io/kori1c/alimpay:sha-2930b85`
 
 ### 方式三：非 Docker 部署
 
@@ -128,14 +123,21 @@ composer install --no-dev
 cp config/alipay.example.php config/alipay.php
 ```
 
-2. 确保这些目录可写
+2. 把项目上传到网站目录
+
+常见做法：
+
+- 宝塔面板新建站点后，把项目文件放到站点根目录
+- Nginx 或 Apache 把站点根目录指向项目目录
+
+3. 确保这些目录可写
 
 - `config/`
 - `data/`
 - `logs/`
 - `qrcode/`
 
-3. 配置 Web 服务
+4. 配置 Web 服务
 
 - Apache 需要开启 `mod_rewrite`
 - Apache 需要允许 `.htaccess`
@@ -165,7 +167,7 @@ cp config/alipay.example.php config/alipay.php
 
 ### 1. 获取商户信息
 
-进入后台的“商户配置 (CodePay)”页面后，系统会自动生成：
+进入后台的“商户配置”页面后，系统会自动生成：
 
 - 商户 ID
 - 商户密钥
@@ -176,7 +178,6 @@ cp config/alipay.example.php config/alipay.php
 
 - 不要公开商户密钥
 - 不要截图外发
-- 不要提交到 GitHub
 
 ### 2. 获取支付宝连接所需参数
 
@@ -251,30 +252,14 @@ AliMPay 支持两种收款模式：
 - 如果使用经营码模式，先上传经营码再测试订单
 - 自测一笔完整订单流程后再正式对外
 
-### 对接 CodePay 时要注意
+### 对接业务系统时要注意
 
-常用下单入口：
-
-- `POST /submit.php`
-- `POST /mapi.php`
-- `POST /api.php?act=submit&format=json`
-
-签名方式：
-
-- 使用 `MD5`
-- 去掉空值参数
-- 去掉 `sign` 和 `sign_type`
-- 按参数名升序排序
-- 拼接为 `key=value&key=value`
-- 最后执行 `md5(签名字符串 + merchant_key)`
-
-下单时如果用了 `device=pc` 这类参数，请确保它参与签名。
-
-回调地址需要注意：
-
-- 你的 `notify_url` 必须能被公网访问
-- 业务处理成功后必须原样返回 `success`
-- 建议你自己的回调逻辑再次校验签名、订单号和金额
+- 如果你的业务系统原本就是对接 CodePay，可以直接接入这套系统
+- 下单签名要和你的请求参数保持完全一致
+- 如果请求里带了额外参数，这些参数也要一起参与签名
+- 异步回调地址必须能被公网访问
+- 回调处理成功后必须按系统要求返回成功标记
+- 你的业务系统最好再次校验签名、订单号和金额
 
 ### 经营码模式注意事项
 
@@ -289,19 +274,15 @@ AliMPay 支持两种收款模式：
 
 备份内容通常包含：
 
-- `config/alipay.php`
-- `config/codepay.json`
-- `data/codepay.db`
+- 支付宝连接配置
+- 商户配置
+- 订单数据库
 - 经营码图片
 
 恢复前建议先保留当前现场快照，避免误恢复后无法回滚。
 
 ### 安全提醒
 
-- 不要提交 `config/alipay.php`
-- 不要提交 `config/codepay.json`
-- 不要提交 `data/codepay.db`
-- 不要提交真实经营码图片
 - 不要公开商户密钥、私钥、公钥和收款用户信息
 - 生产环境建议全站使用 HTTPS
 - 建议定期导出备份
