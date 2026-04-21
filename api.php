@@ -343,19 +343,21 @@ function startBackgroundMonitoring() {
     }
     
     try {
+        $phpCliBinary = resolvePhpCliBinary();
+
         // 在后台启动监控脚本，增加错误处理
         if (PHP_OS_FAMILY !== 'Windows') {
             // Linux/Unix 环境 - 使用更安全的方式
             $command = sprintf(
                 'nohup %s %s > /dev/null 2>&1 & echo $!',
-                escapeshellarg(PHP_BINARY),
+                escapeshellarg($phpCliBinary),
                 escapeshellarg($backgroundScript)
             );
         } else {
             // Windows 环境
             $command = sprintf(
                 'start /B %s %s',
-                escapeshellarg(PHP_BINARY),
+                escapeshellarg($phpCliBinary),
                 escapeshellarg($backgroundScript)
             );
         }
@@ -372,6 +374,48 @@ function startBackgroundMonitoring() {
             'error' => $e->getMessage()
         ]);
     }
+}
+
+/**
+ * Resolve a CLI PHP binary path that can execute background scripts.
+ */
+function resolvePhpCliBinary() {
+    $candidates = [];
+
+    if (defined('PHP_BINARY') && PHP_BINARY) {
+        $candidates[] = PHP_BINARY;
+    }
+
+    if (defined('PHP_BINDIR') && PHP_BINDIR) {
+        $candidates[] = PHP_BINDIR . DIRECTORY_SEPARATOR . 'php';
+        $candidates[] = PHP_BINDIR . DIRECTORY_SEPARATOR . 'php8.2';
+        $candidates[] = PHP_BINDIR . DIRECTORY_SEPARATOR . 'php8.1';
+    }
+
+    $candidates = array_merge($candidates, [
+        '/usr/bin/php',
+        '/usr/bin/php8.2',
+        '/usr/local/bin/php',
+    ]);
+
+    foreach ($candidates as $candidate) {
+        if (!is_string($candidate) || $candidate === '') {
+            continue;
+        }
+
+        if (!is_file($candidate) || !is_executable($candidate)) {
+            continue;
+        }
+
+        $basename = strtolower(basename($candidate));
+        if (strpos($basename, 'php-fpm') !== false) {
+            continue;
+        }
+
+        return $candidate;
+    }
+
+    return 'php';
 }
 
 /**

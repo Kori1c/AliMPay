@@ -4,6 +4,8 @@
  * 提供经营码二维码的HTTP访问
  */
 
+date_default_timezone_set('Asia/Shanghai');
+
 // 设置正确的内容类型
 header('Content-Type: image/png');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
