@@ -20,23 +20,14 @@ AliMPay 是一个基于支付宝账单查询的码支付系统，兼容 CodePay 
 
 ## 部署方式
 
-推荐直接使用 Docker 部署。
+仅推荐使用 Docker 部署。
 
 ### 环境要求
 
-Docker 部署需要：
+部署需要：
 
 - Docker
 - Docker Compose
-
-非 Docker 部署至少需要：
-
-- PHP 8.1+
-- Composer
-- SQLite 扩展
-- GD 扩展
-- ZIP 扩展
-- Apache 或 Nginx
 
 ### 方式一：Docker Compose 部署
 
@@ -113,53 +104,6 @@ ghcr.io/kori1c/alimpay
 
 - `ghcr.io/kori1c/alimpay:latest`
 - `ghcr.io/kori1c/alimpay:v1.0.4`
-
-### 方式三：非 Docker 部署
-
-1. 安装依赖
-
-```bash
-composer install --no-dev
-cp config/alipay.example.php config/alipay.php
-```
-
-2. 把项目上传到网站目录
-
-常见做法：
-
-- 宝塔面板新建站点后，把项目文件放到站点根目录
-- Nginx 或 Apache 把站点根目录指向项目目录
-
-3. 确保这些目录可写
-
-- `config/`
-- `data/`
-- `logs/`
-- `qrcode/`
-
-4. 配置 Web 服务
-
-- Apache 需要开启 `mod_rewrite`
-- Apache 需要允许 `.htaccess`
-- Nginx 需要把站点根目录指向项目目录
-- 生产环境建议配好 HTTPS
-
-5. 配置自动轮询任务
-
-非 Docker 部署时，账单自动轮询需要额外配置计划任务。
-
-推荐使用 `cron`：
-
-```cron
-* * * * * flock -n /tmp/alimpay-monitor-cron.lock /usr/bin/php /你的站点目录/container_monitor.php >/dev/null 2>&1
-```
-
-说明：
-
-- 把 `/你的站点目录/` 改成你自己的实际部署路径
-- `flock` 用来避免重复启动多个监控进程
-- 如果你的 PHP CLI 路径不是 `/usr/bin/php`，请改成实际路径
-- 配置完成后，系统会自动持续轮询支付宝账单
 
 ### 持久化目录说明
 
