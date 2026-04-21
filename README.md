@@ -144,6 +144,23 @@ cp config/alipay.example.php config/alipay.php
 - Nginx 需要把站点根目录指向项目目录
 - 生产环境建议配好 HTTPS
 
+5. 配置自动轮询任务
+
+非 Docker 部署时，账单自动轮询需要额外配置计划任务。
+
+推荐使用 `cron`：
+
+```cron
+* * * * * flock -n /tmp/alimpay-monitor-cron.lock /usr/bin/php /你的站点目录/container_monitor.php >/dev/null 2>&1
+```
+
+说明：
+
+- 把 `/你的站点目录/` 改成你自己的实际部署路径
+- `flock` 用来避免重复启动多个监控进程
+- 如果你的 PHP CLI 路径不是 `/usr/bin/php`，请改成实际路径
+- 配置完成后，系统会自动持续轮询支付宝账单
+
 ### 持久化目录说明
 
 无论你使用本地构建镜像还是官方镜像，都建议持久化这几个目录：
