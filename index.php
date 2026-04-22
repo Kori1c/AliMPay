@@ -1241,8 +1241,8 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	                            <h3 class="text-xl font-bold text-slate-950 dark:text-white">健康状况</h3>
 	                            <div class="space-y-4">
 	                                <div class="flex justify-between items-center text-sm">
-	                                    <span class="metric-label text-slate-500 dark:text-slate-300 font-medium">运行状态</span>
-	                                    <span :class="monitorStatusTextClass" class="font-bold uppercase tracking-widest text-[10px]" x-text="monitorStatusLabel">UNKNOWN</span>
+	                                    <span class="metric-label text-slate-500 dark:text-slate-300 font-medium">订单轮询状态</span>
+	                                    <span :class="monitorStatusTextClass" class="font-bold text-xs" x-text="monitorStatusLabel">未知</span>
 	                                </div>
 	                                <div class="flex justify-between items-center text-sm">
 	                                    <span class="metric-label text-slate-500 dark:text-slate-300 font-medium">最后活跃</span>
@@ -1258,6 +1258,21 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                                 <i data-lucide="zap" class="w-4 h-4"></i>
                                 <span>强制轮询一次账单</span>
                             </button>
+                            <div class="space-y-4 border-t border-slate-200/60 pt-5 dark:border-slate-800/60">
+                                <div class="flex justify-between items-center text-sm">
+                                    <span class="metric-label text-slate-500 dark:text-slate-300 font-medium">系统健康状况</span>
+                                    <span class="font-bold" :class="healthStateValueClass(systemHealth.status)" x-text="systemHealth.label">未知</span>
+                                </div>
+                                <div class="flex justify-between items-center text-sm">
+                                    <span class="metric-label text-slate-500 dark:text-slate-300 font-medium">启动自检</span>
+                                    <span class="font-bold text-slate-950 dark:text-white" x-text="systemHealth.selfCheckLabel">未知</span>
+                                </div>
+                                <div class="flex justify-between items-center text-sm">
+                                    <span class="metric-label text-slate-500 dark:text-slate-300 font-medium">支付宝接口</span>
+                                    <span class="font-bold text-slate-950 dark:text-white" x-text="systemHealth.alipayLabel">未知</span>
+                                </div>
+                                <p class="rounded-2xl bg-slate-50/70 px-4 py-3 text-[11px] leading-5 text-slate-500 dark:bg-slate-900/40 dark:text-slate-300" x-text="systemHealth.summary">当前还没有启动自检记录。</p>
+                            </div>
                         </div>
                         <div class="glass p-8 rounded-3xl md:col-span-2 flex flex-col h-[600px]">
                             <div class="flex items-center justify-between mb-6">
@@ -1330,6 +1345,9 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                 alipayTestResults: [],
                 showAlipayTestPopover: false,
                 health: {},
+                healthSnapshot: { status: 'unknown', services: {}, counters: {}, suggestions: [] },
+                selfCheck: { status: 'unknown', summary: '', checked_at: null, counts: {} },
+                lastSelfCheckAlertKey: '',
                 logs: '',
                 logType: 'info',
                 orderSearch: '',
@@ -1411,14 +1429,14 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 
 	                get monitorStatusLabel() {
 	                    const labels = {
-	                        healthy: 'HEALTHY',
-	                        running: 'RUNNING',
-	                        dormant: 'DORMANT',
-	                        stale: 'STALE',
-	                        error: 'ERROR',
-	                        unknown: 'UNKNOWN'
+	                        healthy: '正常',
+	                        running: '运行中',
+	                        dormant: '待启动',
+	                        stale: '待刷新',
+	                        error: '异常',
+	                        unknown: '未知'
 	                    };
-	                    return labels[this.health.status] || 'UNKNOWN';
+	                    return labels[this.health.status] || '未知';
 	                },
 
 	                get monitorStatusText() {
@@ -1455,6 +1473,68 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	                        unknown: 'text-slate-400'
 	                    };
 	                    return classes[this.health.status] || 'text-slate-400';
+	                },
+
+	                get systemHealth() {
+	                    const overallStatus = this.healthSnapshot.status || 'unknown';
+	                    const alipayStatus = this.healthSnapshot.services?.alipay_api?.status || 'unknown';
+	                    const selfCheckStatus = this.selfCheck.status || 'unknown';
+	                    let status = 'healthy';
+
+	                    if (selfCheckStatus === 'error' || alipayStatus === 'error' || overallStatus === 'error') {
+	                        status = 'error';
+	                    } else if (selfCheckStatus === 'warning' || overallStatus === 'degraded') {
+	                        status = 'warning';
+	                    } else if (overallStatus === 'unknown') {
+	                        status = 'unknown';
+	                    }
+
+	                    return {
+	                        status,
+	                        label: this.healthStateText(status),
+	                        selfCheckLabel: this.systemSelfCheckText(selfCheckStatus),
+	                        alipayLabel: this.systemAlipayText(alipayStatus),
+	                        summary: this.selfCheck.summary || '当前还没有启动自检记录。'
+	                    };
+	                },
+
+	                healthStateText(status) {
+	                    const labels = {
+	                        healthy: '正常',
+	                        warning: '需关注',
+	                        error: '异常',
+	                        unknown: '未知'
+	                    };
+	                    return labels[status] || labels.unknown;
+	                },
+
+	                healthStateValueClass(status) {
+	                    const classes = {
+	                        healthy: 'text-green-600 dark:text-green-300',
+	                        warning: 'text-amber-600 dark:text-amber-300',
+	                        error: 'text-red-600 dark:text-red-300',
+	                        unknown: 'text-slate-500 dark:text-slate-300'
+	                    };
+	                    return classes[status] || classes.unknown;
+	                },
+
+	                systemSelfCheckText(status) {
+	                    const labels = {
+	                        healthy: '已通过',
+	                        warning: '有警告',
+	                        error: '未通过',
+	                        unknown: '未执行'
+	                    };
+	                    return labels[status] || labels.unknown;
+	                },
+
+	                systemAlipayText(status) {
+	                    const labels = {
+	                        healthy: '正常',
+	                        error: '异常',
+	                        unknown: '未知'
+	                    };
+	                    return labels[status] || labels.unknown;
 	                },
 
 		                settingsTabClass(id) {
@@ -1529,10 +1609,34 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	                toast(message, type = 'info', duration = 3000) {
                     const toast = { id: Date.now() + Math.random(), message, type };
                     this.toasts.push(toast);
+                    this.$nextTick(() => lucide.createIcons());
                     setTimeout(() => {
                         this.toasts = this.toasts.filter(t => t.id !== toast.id);
                     }, duration);
                 },
+
+	                maybeNotifySelfCheck(selfCheck) {
+	                    if (!selfCheck || !['warning', 'error'].includes(selfCheck.status)) {
+	                        return;
+	                    }
+
+	                    const counts = selfCheck.counts || {};
+	                    const alertKey = [
+	                        selfCheck.checked_at_unix || selfCheck.checked_at || 'unknown',
+	                        selfCheck.status,
+	                        counts.warning || 0,
+	                        counts.error || 0
+	                    ].join(':');
+
+	                    if (this.lastSelfCheckAlertKey === alertKey) {
+	                        return;
+	                    }
+
+	                    this.lastSelfCheckAlertKey = alertKey;
+	                    const prefix = selfCheck.status === 'error' ? '启动自检异常：' : '启动自检提醒：';
+	                    const type = selfCheck.status === 'error' ? 'error' : 'info';
+	                    this.toast(prefix + (selfCheck.summary || '系统检测到部署问题，请打开“监控状态”查看。'), type, selfCheck.status === 'error' ? 8000 : 6000);
+	                },
 
                 async login() {
                     this.loading = true;
@@ -1920,13 +2024,20 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                     try {
                         const res = await fetch('health.php?action=status');
                         const data = await res.json();
-                        if (data.success && data.data && data.data.services && data.data.services.monitoring) {
-                            this.health = data.data.services.monitoring;
+                        if (data.success && data.data && data.data.services) {
+                            this.healthSnapshot = data.data;
+                            this.health = data.data.services.monitoring || { status: 'unknown', health_score: 0, last_run: 'N/A' };
+                            this.selfCheck = data.data.services.self_check || { status: 'unknown', summary: '', checked_at: null, counts: {} };
+                            this.maybeNotifySelfCheck(this.selfCheck);
                         } else {
+                            this.healthSnapshot = { status: 'unknown', services: {}, counters: {}, suggestions: [] };
                             this.health = { status: 'unknown', health_score: 0, last_run: 'N/A' };
+                            this.selfCheck = { status: 'unknown', summary: '', checked_at: null, counts: {} };
                         }
                     } catch (e) {
+                        this.healthSnapshot = { status: 'unknown', services: {}, counters: {}, suggestions: [] };
                         this.health = { status: 'unknown', health_score: 0, last_run: 'N/A' };
+                        this.selfCheck = { status: 'unknown', summary: '', checked_at: null, counts: {} };
                     }
                 },
 

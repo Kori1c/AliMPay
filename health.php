@@ -123,8 +123,12 @@ function checkSystemStatus() {
         // 3. 检查监控服务 - 使用改进的检测逻辑
         $monitorStatus = checkMonitoringServiceImproved();
         $status['services']['monitoring'] = $monitorStatus;
-        
-        // 4. 检查订单清理功能
+
+        // 4. 检查启动自检结果
+        $selfCheckStatus = loadSelfCheckStatus();
+        $status['services']['self_check'] = $selfCheckStatus;
+
+        // 5. 检查订单清理功能
         $config = require __DIR__ . '/config/alipay.php';
         $autoCleanup = $config['payment']['auto_cleanup'] ?? true;
         $orderTimeout = $config['payment']['order_timeout'] ?? 300;
@@ -144,20 +148,25 @@ function checkSystemStatus() {
             'last_cleanup' => 'Runs with monitoring cycle'
         ];
         
-        // 5. 统计信息
+        // 6. 统计信息
         $status['counters'] = [
             'total_orders' => $orderCount,
             'unpaid_orders' => $unpaidCount,
             'paid_orders' => $orderCount - $unpaidCount,
             'system_uptime' => getSystemUptime()
         ];
-        
-        // 6. 智能建议 - 改进的逻辑
-        $suggestions = generateSmartSuggestions($monitorStatus, $unpaidCount, $expiredCount, $autoCleanup);
+
+        // 7. 智能建议 - 改进的逻辑
+        $suggestions = generateSmartSuggestions($monitorStatus, $unpaidCount, $expiredCount, $autoCleanup, $selfCheckStatus);
         $status['suggestions'] = $suggestions;
-        
-        // 7. 整体状态判断
-        if ($alipayStatus !== 'healthy' || $monitorStatus['status'] === 'error') {
+
+        // 8. 整体状态判断
+        if (
+            $alipayStatus !== 'healthy'
+            || $monitorStatus['status'] === 'error'
+            || $selfCheckStatus['status'] === 'error'
+            || $selfCheckStatus['status'] === 'warning'
+        ) {
             $status['status'] = 'degraded';
         } elseif ($monitorStatus['status'] === 'healthy' && $unpaidCount < 20) {
             $status['status'] = 'excellent';
@@ -169,6 +178,54 @@ function checkSystemStatus() {
     }
     
     respondSuccess($status);
+}
+
+/**
+ * 读取启动自检状态
+ */
+function loadSelfCheckStatus() {
+    $statusFile = __DIR__ . '/data/self_check_status.json';
+    $defaults = [
+        'status' => 'unknown',
+        'mode' => null,
+        'checked_at' => null,
+        'checked_at_unix' => null,
+        'summary' => '当前还没有启动自检记录。',
+        'counts' => [
+            'healthy' => 0,
+            'warning' => 0,
+            'error' => 0,
+            'skipped' => 0
+        ]
+    ];
+
+    if (!file_exists($statusFile)) {
+        return $defaults;
+    }
+
+    $payload = json_decode(file_get_contents($statusFile), true);
+    if (!is_array($payload)) {
+        $defaults['status'] = 'error';
+        $defaults['summary'] = '启动自检状态文件损坏，请重新执行一次自检。';
+        return $defaults;
+    }
+
+    $status = (string)($payload['status'] ?? 'unknown');
+    if (!in_array($status, ['healthy', 'warning', 'error', 'unknown'], true)) {
+        $status = 'unknown';
+    }
+
+    $counts = array_merge($defaults['counts'], is_array($payload['counts'] ?? null) ? $payload['counts'] : []);
+
+    $merged = array_merge($defaults, $payload, [
+        'status' => $status,
+        'counts' => $counts
+    ]);
+
+    // Do not expose detailed startup self-check internals on the public health endpoint.
+    unset($merged['checks'], $merged['base_url']);
+
+    return $merged;
 }
 
 /**
@@ -297,9 +354,23 @@ function testMonitoringFunctionality() {
 /**
  * 生成智能建议
  */
-function generateSmartSuggestions($monitorStatus, $unpaidCount, $expiredCount, $autoCleanup) {
+function generateSmartSuggestions($monitorStatus, $unpaidCount, $expiredCount, $autoCleanup, $selfCheckStatus = null) {
     $suggestions = [];
-    
+
+    if (is_array($selfCheckStatus)) {
+        switch ($selfCheckStatus['status'] ?? 'unknown') {
+            case 'error':
+                $suggestions[] = (string)($selfCheckStatus['summary'] ?? '启动自检未通过，请优先处理部署异常。');
+                break;
+            case 'warning':
+                $suggestions[] = (string)($selfCheckStatus['summary'] ?? '启动自检发现警告，建议尽快检查配置。');
+                break;
+            case 'unknown':
+                $suggestions[] = '当前还没有启动自检记录，重启容器后会自动执行一次启动检查。';
+                break;
+        }
+    }
+
     // 监控服务建议
     switch ($monitorStatus['status']) {
         case 'error':

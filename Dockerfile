@@ -36,12 +36,14 @@ WORKDIR /var/www/html
 # Copy project files and Composer dependencies
 COPY . /var/www/html/
 COPY --from=vendor /app/vendor /var/www/html/vendor
+COPY docker/startup.sh /usr/local/bin/alimpay-startup
 
 # Ensure runtime directories exist and are writable
 RUN mkdir -p data logs qrcode config \
     && find data logs qrcode config -type d -exec chmod 770 {} + \
-    && chown -R www-data:www-data /var/www/html
+    && chown -R www-data:www-data /var/www/html \
+    && chmod +x /usr/local/bin/alimpay-startup
 
 EXPOSE 80
 
-CMD ["apache2-foreground"]
+CMD ["alimpay-startup"]

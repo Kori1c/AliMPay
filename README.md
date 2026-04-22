@@ -65,6 +65,20 @@ docker compose up -d --build
 - 默认后台密码：`admin`
 - 首次登录后请立即修改后台密码
 
+6. 启动后自检
+
+容器启动后会自动执行一次启动自检：
+
+- 自检结果会写入 `data/self_check_status.json`
+- 自检日志会写入 `logs/self-check.log`
+- 如果检测到异常，后台登录后会直接弹出系统提示
+
+完成后台配置后，建议再执行一次完整链路自检：
+
+```bash
+docker compose exec -T alimpay php /var/www/html/scripts/self-check.php --base-url=https://你的域名 --mode=full
+```
+
 ### 方式二：直接使用官方镜像
 
 如果你不想本地构建镜像，可以直接使用官方镜像：
