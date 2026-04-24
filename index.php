@@ -1814,9 +1814,6 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                         return;
                     }
 
-                    const name = window.prompt('给这个 Passkey 起个名字', '我的设备');
-                    if (name === null) return;
-
                     this.passkeyLoading = true;
                     try {
                         const { data: optionsData } = await this.apiRequest('admin_api.php?action=passkey_register_options', { method: 'POST' });
@@ -1831,7 +1828,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                name: name || 'Passkey',
+                                name: 'Passkey',
                                 credential: this.credentialToJson(credential)
                             })
                         });
