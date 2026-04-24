@@ -7,6 +7,7 @@ use AliMPay\Utils\Logger;
 use AliMPay\Core\AlipayClient;
 use AliMPay\Core\BillQuery;
 use AliMPay\Core\PaymentMonitor;
+use AliMPay\Core\WebAuthn;
 
 ob_start();
 session_set_cookie_params([
@@ -58,6 +59,10 @@ function requiresCsrfValidation(string $action): bool
         'upload_qrcode',
         'create_backup',
         'restore_backup',
+        'passkey_register_options',
+        'passkey_register_verify',
+        'passkey_delete',
+        'save_auth_settings',
         'logout',
     ];
     return in_array($action, $csrfProtectedActions, true);
@@ -136,6 +141,57 @@ function verifyAdminPassword(string $password, array &$config): bool
     unset($config['admin_password']);
 
     return true;
+}
+
+function merchantAuthConfig(array $config): array
+{
+    $auth = is_array($config['auth'] ?? null) ? $config['auth'] : [];
+    $auth['password_login_enabled'] = array_key_exists('password_login_enabled', $auth)
+        ? (bool)$auth['password_login_enabled']
+        : true;
+    $auth['passkeys'] = WebAuthn::validPasskeys(is_array($auth['passkeys'] ?? null) ? $auth['passkeys'] : []);
+
+    return $auth;
+}
+
+function passkeySummaries(array $config): array
+{
+    return array_map([WebAuthn::class, 'publicKeySummary'], merchantAuthConfig($config)['passkeys']);
+}
+
+function passwordLoginAllowed(array $config): bool
+{
+    $auth = merchantAuthConfig($config);
+    return $auth['password_login_enabled'] || count($auth['passkeys']) === 0;
+}
+
+function authStatusPayload(array $config): array
+{
+    $auth = merchantAuthConfig($config);
+    return [
+        'password_login_enabled' => passwordLoginAllowed($config),
+        'password_login_configured' => $auth['password_login_enabled'],
+        'passkey_enabled' => count($auth['passkeys']) > 0,
+        'passkey_count' => count($auth['passkeys']),
+        'passkeys' => passkeySummaries($config),
+        'rp_id' => WebAuthn::relyingPartyId(),
+    ];
+}
+
+function readJsonBody(): array
+{
+    $raw = file_get_contents('php://input');
+    $data = json_decode($raw ?: '', true);
+    if (!is_array($data)) {
+        throw new Exception('Invalid JSON request body');
+    }
+
+    return $data;
+}
+
+function isPublicAdminAction(string $action): bool
+{
+    return in_array($action, ['login', 'auth_status', 'passkey_login_options', 'passkey_login_verify'], true);
 }
 
 function formatAlipayTestError(string $message): string
@@ -497,7 +553,7 @@ function attachPaymentPageUrls(array $orders, int $timeoutSeconds): array
 }
 
 // Login rate limiting
-if ($action === 'login') {
+if ($action === 'login' || $action === 'passkey_login_verify') {
     $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     $now = time();
     $lockFile = __DIR__ . '/login_attempts.json';
@@ -513,29 +569,37 @@ if ($action === 'login') {
 }
 
 // Authentication check
-if ($action !== 'login' && (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true)) {
+if (!isPublicAdminAction($action) && (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true)) {
     respondJson(['success' => false, 'message' => 'Unauthorized'], 401);
 }
 
 // CSRF validation for state-changing operations
-if ($action !== 'login' && requiresCsrfValidation($action)) {
+if (!isPublicAdminAction($action) && requiresCsrfValidation($action)) {
     if (!validateCsrfToken()) {
         respondJson(['success' => false, 'message' => 'CSRF token validation failed, please refresh the page'], 403);
     }
 }
 
 // Generate CSRF token for logged-in users
-if ($action !== 'login' && $action !== '') {
+if (!isPublicAdminAction($action) && $action !== '') {
     generateCsrfToken();
 }
 
-if ($action !== 'login') {
+if (!isPublicAdminAction($action)) {
     markExpiredOrdersForAdmin($db, $expiredOrderThreshold);
 }
 
 try {
     switch ($action) {
+        case 'auth_status':
+            respondJson(['success' => true, 'data' => authStatusPayload($merchantConfig)]);
+            break;
+
         case 'login':
+            if (!passwordLoginAllowed($merchantConfig)) {
+                respondJson(['success' => false, 'message' => '密码登录已关闭，请使用 Passkey 登录'], 403);
+            }
+
             $password = $_POST['password'] ?? '';
             if (verifyAdminPassword($password, $merchantConfig)) {
                 session_regenerate_id(true);
@@ -551,6 +615,52 @@ try {
                 $remaining = 5 - count($attempts[$ip]);
                 respondJson(['success' => false, 'message' => "密码错误，还可尝试 {$remaining} 次"]);
             }
+            break;
+
+        case 'passkey_login_options':
+            $auth = merchantAuthConfig($merchantConfig);
+            if (count($auth['passkeys']) === 0) {
+                respondJson(['success' => false, 'message' => '尚未注册 Passkey，请先使用密码登录后添加'], 400);
+            }
+            $challenge = WebAuthn::createChallenge();
+            $_SESSION['passkey_login_challenge'] = $challenge;
+            respondJson(['success' => true, 'data' => WebAuthn::authenticationOptions($challenge, $auth['passkeys'])]);
+            break;
+
+        case 'passkey_login_verify':
+            $challenge = (string)($_SESSION['passkey_login_challenge'] ?? '');
+            if ($challenge === '') {
+                throw new Exception('Passkey 登录请求已过期，请重试');
+            }
+            $credential = readJsonBody();
+            $auth = merchantAuthConfig($merchantConfig);
+            try {
+                $verified = WebAuthn::verifyAuthentication($credential, $auth['passkeys'], $challenge);
+            } catch (Exception $e) {
+                $attempts[$ip][] = $now;
+                file_put_contents($lockFile, json_encode($attempts), LOCK_EX);
+                respondJson(['success' => false, 'message' => 'Passkey 登录失败，请重试'], 401);
+            }
+            unset($_SESSION['passkey_login_challenge']);
+
+            foreach ($auth['passkeys'] as &$passkey) {
+                if (hash_equals((string)$passkey['id'], $verified['id'])) {
+                    $passkey['sign_count'] = $verified['sign_count'];
+                    $passkey['last_used_at'] = date('Y-m-d H:i:s');
+                    break;
+                }
+            }
+            unset($passkey);
+
+            session_regenerate_id(true);
+            $_SESSION['admin_logged_in'] = true;
+            $merchantConfig['auth'] = $auth;
+            $merchantConfig['last_login'] = date('Y-m-d H:i:s');
+            unset($attempts[$ip]);
+            file_put_contents($lockFile, json_encode($attempts), LOCK_EX);
+            saveMerchantConfig($merchantConfigFile, $merchantConfig);
+            generateCsrfToken();
+            respondJson(['success' => true, 'data' => authStatusPayload($merchantConfig)]);
             break;
 
         case 'logout':
@@ -660,7 +770,8 @@ try {
                         'rate' => $merchantConfig['rate'] ?? '96',
                         'admin_password' => '********',
                         'status' => $merchantConfig['status'] ?? 1,
-                    ]
+                    ],
+                    'auth' => authStatusPayload($merchantConfig)
                 ]
             ]);
             break;
@@ -739,6 +850,77 @@ try {
             }
             saveMerchantConfig($merchantConfigFile, $merchantConfig);
             respondJson(['success' => true]);
+            break;
+
+        case 'passkey_register_options':
+            $auth = merchantAuthConfig($merchantConfig);
+            $challenge = WebAuthn::createChallenge();
+            $_SESSION['passkey_register_challenge'] = $challenge;
+            respondJson(['success' => true, 'data' => WebAuthn::registrationOptions($challenge, $auth['passkeys'])]);
+            break;
+
+        case 'passkey_register_verify':
+            $challenge = (string)($_SESSION['passkey_register_challenge'] ?? '');
+            if ($challenge === '') {
+                throw new Exception('Passkey 注册请求已过期，请重试');
+            }
+
+            $request = readJsonBody();
+            $credential = is_array($request['credential'] ?? null) ? $request['credential'] : $request;
+            $name = trim((string)($request['name'] ?? ''));
+            $name = $name !== '' ? mb_substr($name, 0, 40) : 'Passkey';
+
+            $registered = WebAuthn::verifyRegistration($credential, $challenge);
+            unset($_SESSION['passkey_register_challenge']);
+
+            $auth = merchantAuthConfig($merchantConfig);
+            foreach ($auth['passkeys'] as $existing) {
+                if (hash_equals((string)$existing['id'], $registered['id'])) {
+                    throw new Exception('这个 Passkey 已经注册过');
+                }
+            }
+
+            $auth['passkeys'][] = [
+                'id' => $registered['id'],
+                'name' => $name,
+                'public_key' => $registered['public_key'],
+                'sign_count' => $registered['sign_count'],
+                'created_at' => date('Y-m-d H:i:s'),
+                'last_used_at' => null,
+            ];
+            $merchantConfig['auth'] = $auth;
+            saveMerchantConfig($merchantConfigFile, $merchantConfig);
+            respondJson(['success' => true, 'data' => authStatusPayload($merchantConfig)]);
+            break;
+
+        case 'passkey_delete':
+            $credentialId = (string)($_POST['id'] ?? '');
+            if ($credentialId === '') {
+                throw new Exception('缺少 Passkey ID');
+            }
+            $auth = merchantAuthConfig($merchantConfig);
+            $auth['passkeys'] = array_values(array_filter(
+                $auth['passkeys'],
+                static fn($key) => !hash_equals((string)$key['id'], $credentialId)
+            ));
+            if (!$auth['password_login_enabled'] && count($auth['passkeys']) === 0) {
+                throw new Exception('纯 Passkey 模式下至少保留一个 Passkey');
+            }
+            $merchantConfig['auth'] = $auth;
+            saveMerchantConfig($merchantConfigFile, $merchantConfig);
+            respondJson(['success' => true, 'data' => authStatusPayload($merchantConfig)]);
+            break;
+
+        case 'save_auth_settings':
+            $passwordLoginEnabled = (int)($_POST['password_login_enabled'] ?? 1) === 1;
+            $auth = merchantAuthConfig($merchantConfig);
+            if (!$passwordLoginEnabled && count($auth['passkeys']) === 0) {
+                throw new Exception('关闭密码登录前请至少注册一个 Passkey');
+            }
+            $auth['password_login_enabled'] = $passwordLoginEnabled;
+            $merchantConfig['auth'] = $auth;
+            saveMerchantConfig($merchantConfigFile, $merchantConfig);
+            respondJson(['success' => true, 'data' => authStatusPayload($merchantConfig)]);
             break;
 
         case 'get_logs':

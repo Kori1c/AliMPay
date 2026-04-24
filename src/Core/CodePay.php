@@ -82,7 +82,11 @@ class CodePay
                 'status' => 1,
                 'rate' => '96',
                 'admin_password_hash' => password_hash('admin', PASSWORD_DEFAULT),
-                'admin_password_is_default' => true
+                'admin_password_is_default' => true,
+                'auth' => [
+                    'password_login_enabled' => true,
+                    'passkeys' => []
+                ]
             ];
             
             file_put_contents($this->configFile, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));

@@ -654,10 +654,19 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                         <i data-lucide="shield-check" class="text-white w-8 h-8"></i>
                     </div>
                     <h1 class="text-2xl font-bold">AliMPay 管理登录</h1>
-                    <p class="text-slate-500 dark:text-slate-400 mt-2">请输入管理员密码以继续</p>
+                    <p class="text-slate-500 dark:text-slate-400 mt-2" x-text="authStatus.passkey_enabled ? (authStatus.password_login_enabled ? '使用 Passkey 或管理员密码继续' : '使用 Passkey 继续') : '请输入管理员密码以继续'"></p>
                 </div>
-                <form @submit.prevent="login()">
-                    <div class="space-y-4">
+                <div class="space-y-4">
+                    <button type="button"
+                            x-show="passkeySupported && authStatus.passkey_enabled"
+                            @click="loginWithPasskey()"
+                            :disabled="loading"
+                            class="w-full py-3 bg-slate-950 hover:bg-slate-800 text-white font-semibold rounded-xl shadow-lg shadow-slate-900/20 flex items-center justify-center space-x-2 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200">
+                        <i data-lucide="fingerprint" class="w-5 h-5"></i>
+                        <span>使用 Passkey 登录</span>
+                    </button>
+                    <form x-show="authStatus.password_login_enabled" @submit.prevent="login()">
+                        <div class="space-y-4">
                         <div>
                             <label class="block text-sm font-medium mb-1">管理员密码</label>
                             <input type="password" x-model="loginPass"
@@ -670,8 +679,10 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                             <span x-show="loading" class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
                         </button>
                     </div>
-                    <p x-show="error" x-text="error" class="text-red-500 text-center mt-4 text-sm font-medium"></p>
-                </form>
+                    </form>
+                    <p x-show="!authStatus.password_login_enabled && !authStatus.passkey_enabled" class="text-amber-600 text-center text-sm font-medium">当前没有可用登录方式，请恢复配置后再登录。</p>
+                    <p x-show="error" x-text="error" class="text-red-500 text-center text-sm font-medium"></p>
+                </div>
             </div>
         </div>
     </template>
@@ -1191,6 +1202,53 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                                 <input type="text" x-model="merchantInfo.created_at" readonly class="w-full px-4 py-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 font-mono text-sm text-slate-500 cursor-not-allowed">
                             </div>
                         </div>
+                        <div class="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-5 dark:border-slate-700/70 dark:bg-slate-900/40">
+                            <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                                <div>
+                                    <p class="text-sm font-semibold text-slate-700 dark:text-slate-100">管理登录安全</p>
+                                    <p class="mt-1 text-[11px] text-slate-400">Passkey 注册后可以关闭密码登录，后台将只接受设备生物识别、安全密钥或系统凭据登录</p>
+                                </div>
+                                <button type="button"
+                                        @click="registerPasskey()"
+                                        :disabled="!passkeySupported || passkeyLoading"
+                                        class="inline-flex min-w-[128px] items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800 disabled:opacity-60 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200">
+                                    <i data-lucide="fingerprint" class="w-4 h-4"></i>
+                                    <span x-text="passkeyLoading ? '处理中' : '添加 Passkey'"></span>
+                                </button>
+                            </div>
+                            <div class="mt-5 flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white/70 px-4 py-3 dark:border-slate-700 dark:bg-slate-950/40">
+                                <div>
+                                    <p class="text-sm font-semibold">允许密码登录</p>
+                                    <p class="mt-0.5 text-[11px] text-slate-400" x-text="authStatus.passkey_count > 0 ? '关闭后进入纯 Passkey 模式' : '至少添加一个 Passkey 后才能关闭'"></p>
+                                </div>
+                                <button type="button"
+                                        @click.prevent.stop="togglePasswordLogin()"
+                                        :disabled="passkeyLoading || authStatus.passkey_count === 0"
+                                        :class="authStatus.password_login_configured ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'"
+                                        class="relative h-6 w-12 rounded-full disabled:opacity-60">
+                                    <span :class="authStatus.password_login_configured ? 'translate-x-6' : 'translate-x-0.5'" class="absolute left-0 top-0.5 h-5 w-5 rounded-full bg-white shadow transition"></span>
+                                </button>
+                            </div>
+                            <div class="mt-4 space-y-2">
+                                <template x-if="authStatus.passkeys.length === 0">
+                                    <p class="rounded-xl border border-dashed border-slate-300 px-4 py-3 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">还没有注册 Passkey。</p>
+                                </template>
+                                <template x-for="key in authStatus.passkeys" :key="key.id">
+                                    <div class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/70 px-4 py-3 dark:border-slate-700 dark:bg-slate-950/40">
+                                        <div class="min-w-0">
+                                            <p class="truncate text-sm font-semibold text-slate-700 dark:text-slate-100" x-text="key.name"></p>
+                                            <p class="text-[11px] text-slate-400" x-text="key.last_used_at ? `上次使用 ${key.last_used_at}` : `创建于 ${key.created_at}`"></p>
+                                        </div>
+                                        <button type="button"
+                                                @click="deletePasskey(key.id)"
+                                                :disabled="passkeyLoading || (!authStatus.password_login_configured && authStatus.passkey_count <= 1)"
+                                                class="inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-bold text-red-500 transition hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/30">
+                                            删除
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
                         <div class="flex justify-end pt-2">
                             <div class="flex flex-col items-stretch gap-3 rounded-2xl border border-slate-200/70 bg-slate-50/80 px-4 py-4 dark:border-slate-700/70 dark:bg-slate-900/40 sm:flex-row sm:items-center">
                                 <div class="min-w-0 sm:mr-2">
@@ -1322,6 +1380,9 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                 loginPass: '',
                 error: '',
                 loading: false,
+                passkeyLoading: false,
+                passkeySupported: window.PublicKeyCredential !== undefined,
+                authStatus: { password_login_enabled: true, password_login_configured: true, passkey_enabled: false, passkey_count: 0, passkeys: [], rp_id: '' },
                 refreshing: false,
                 activeTab: 'dashboard',
                 settingsSection: 'merchant',
@@ -1376,6 +1437,8 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                     if (this.isLoggedIn) {
                         this.refreshData();
                         setInterval(() => this.getHealth(), 30000);
+                    } else {
+                        this.getAuthStatus();
                     }
                     this.$nextTick(() => lucide.createIcons());
 
@@ -1403,6 +1466,67 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                         this.updateCsrfToken(data._csrf_token);
                     }
                     return { res, data };
+                },
+
+                bufferToBase64Url(buffer) {
+                    const bytes = new Uint8Array(buffer);
+                    let binary = '';
+                    bytes.forEach(byte => binary += String.fromCharCode(byte));
+                    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+                },
+
+                base64UrlToBuffer(value) {
+                    const base64 = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+                    const binary = atob(base64);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) {
+                        bytes[i] = binary.charCodeAt(i);
+                    }
+                    return bytes.buffer;
+                },
+
+                publicKeyOptionsFromServer(options) {
+                    const converted = JSON.parse(JSON.stringify(options));
+                    converted.challenge = this.base64UrlToBuffer(converted.challenge);
+                    if (converted.user?.id) {
+                        converted.user.id = this.base64UrlToBuffer(converted.user.id);
+                    }
+                    if (Array.isArray(converted.allowCredentials)) {
+                        converted.allowCredentials = converted.allowCredentials.map(item => Object.assign({}, item, {
+                            id: this.base64UrlToBuffer(item.id)
+                        }));
+                    }
+                    if (Array.isArray(converted.excludeCredentials)) {
+                        converted.excludeCredentials = converted.excludeCredentials.map(item => Object.assign({}, item, {
+                            id: this.base64UrlToBuffer(item.id)
+                        }));
+                    }
+                    return converted;
+                },
+
+                credentialToJson(credential) {
+                    const response = credential.response;
+                    const json = {
+                        id: credential.id,
+                        rawId: this.bufferToBase64Url(credential.rawId),
+                        type: credential.type,
+                        response: {
+                            clientDataJSON: this.bufferToBase64Url(response.clientDataJSON)
+                        }
+                    };
+                    if (response.attestationObject) {
+                        json.response.attestationObject = this.bufferToBase64Url(response.attestationObject);
+                    }
+                    if (response.authenticatorData) {
+                        json.response.authenticatorData = this.bufferToBase64Url(response.authenticatorData);
+                    }
+                    if (response.signature) {
+                        json.response.signature = this.bufferToBase64Url(response.signature);
+                    }
+                    if (response.userHandle) {
+                        json.response.userHandle = this.bufferToBase64Url(response.userHandle);
+                    }
+                    return json;
                 },
 
 	                get currentMenuName() {
@@ -1638,6 +1762,155 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	                    this.toast(prefix + (selfCheck.summary || '系统检测到部署问题，请打开“监控状态”查看。'), type, selfCheck.status === 'error' ? 8000 : 6000);
 	                },
 
+                async getAuthStatus() {
+                    try {
+                        const { data } = await this.apiRequest('admin_api.php?action=auth_status', { cache: 'no-store' });
+                        if (data.success && data.data) {
+                            this.authStatus = Object.assign(this.authStatus, data.data);
+                        }
+                    } catch (e) {}
+                },
+
+                async loginWithPasskey() {
+                    if (!this.passkeySupported) {
+                        this.error = '当前浏览器不支持 Passkey';
+                        return;
+                    }
+
+                    this.loading = true;
+                    this.error = '';
+                    try {
+                        const { data: optionsData } = await this.apiRequest('admin_api.php?action=passkey_login_options', { method: 'POST' });
+                        if (!optionsData.success) {
+                            throw new Error(optionsData.message || '无法发起 Passkey 登录');
+                        }
+
+                        const credential = await navigator.credentials.get({
+                            publicKey: this.publicKeyOptionsFromServer(optionsData.data)
+                        });
+                        const { data } = await this.apiRequest('admin_api.php?action=passkey_login_verify', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.credentialToJson(credential))
+                        });
+
+                        if (data.success) {
+                            this.authStatus = Object.assign(this.authStatus, data.data || {});
+                            this.isLoggedIn = true;
+                            this.refreshData();
+                        } else {
+                            this.error = data.message || 'Passkey 登录失败';
+                        }
+                    } catch (e) {
+                        this.error = e.name === 'NotAllowedError' ? 'Passkey 操作已取消' : (e.message || 'Passkey 登录失败');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async registerPasskey() {
+                    if (!this.passkeySupported) {
+                        this.toast('当前浏览器不支持 Passkey', 'error');
+                        return;
+                    }
+
+                    const name = window.prompt('给这个 Passkey 起个名字', '我的设备');
+                    if (name === null) return;
+
+                    this.passkeyLoading = true;
+                    try {
+                        const { data: optionsData } = await this.apiRequest('admin_api.php?action=passkey_register_options', { method: 'POST' });
+                        if (!optionsData.success) {
+                            throw new Error(optionsData.message || '无法发起 Passkey 注册');
+                        }
+
+                        const credential = await navigator.credentials.create({
+                            publicKey: this.publicKeyOptionsFromServer(optionsData.data)
+                        });
+                        const { data } = await this.apiRequest('admin_api.php?action=passkey_register_verify', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                name: name || 'Passkey',
+                                credential: this.credentialToJson(credential)
+                            })
+                        });
+
+                        if (!data.success) {
+                            throw new Error(data.message || 'Passkey 注册失败');
+                        }
+
+                        this.authStatus = Object.assign(this.authStatus, data.data || {});
+                        this.toast('Passkey 已添加', 'success');
+                        this.$nextTick(() => lucide.createIcons());
+                    } catch (e) {
+                        this.toast(e.name === 'NotAllowedError' ? 'Passkey 操作已取消' : (e.message || 'Passkey 注册失败'), 'error', 5000);
+                    } finally {
+                        this.passkeyLoading = false;
+                    }
+                },
+
+                async togglePasswordLogin() {
+                    if (this.authStatus.passkey_count === 0) {
+                        this.toast('请先添加 Passkey', 'error');
+                        return;
+                    }
+
+                    const nextValue = !this.authStatus.password_login_configured;
+                    if (!nextValue) {
+                        const confirmed = window.confirm('关闭后后台将进入纯 Passkey 模式。请确认当前 Passkey 可正常登录。');
+                        if (!confirmed) return;
+                    }
+
+                    this.passkeyLoading = true;
+                    try {
+                        const params = new URLSearchParams();
+                        params.set('password_login_enabled', nextValue ? '1' : '0');
+                        const { data } = await this.apiRequest('admin_api.php?action=save_auth_settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: params.toString()
+                        });
+                        if (!data.success) {
+                            throw new Error(data.message || '保存失败');
+                        }
+                        this.authStatus = Object.assign(this.authStatus, data.data || {});
+                        this.toast(nextValue ? '密码登录已开启' : '已切换为纯 Passkey 模式', 'success');
+                    } catch (e) {
+                        this.toast('保存失败: ' + e.message, 'error');
+                    } finally {
+                        this.passkeyLoading = false;
+                    }
+                },
+
+                async deletePasskey(id) {
+                    if (!this.authStatus.password_login_configured && this.authStatus.passkey_count <= 1) {
+                        this.toast('纯 Passkey 模式下至少保留一个 Passkey', 'error');
+                        return;
+                    }
+                    if (!window.confirm('确定删除这个 Passkey 吗？')) return;
+
+                    this.passkeyLoading = true;
+                    try {
+                        const params = new URLSearchParams();
+                        params.set('id', id);
+                        const { data } = await this.apiRequest('admin_api.php?action=passkey_delete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: params.toString()
+                        });
+                        if (!data.success) {
+                            throw new Error(data.message || '删除失败');
+                        }
+                        this.authStatus = Object.assign(this.authStatus, data.data || {});
+                        this.toast('Passkey 已删除', 'success');
+                    } catch (e) {
+                        this.toast('删除失败: ' + e.message, 'error');
+                    } finally {
+                        this.passkeyLoading = false;
+                    }
+                },
+
                 async login() {
                     this.loading = true;
                     this.error = '';
@@ -1648,6 +1921,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                         const { data } = await this.apiRequest('admin_api.php?action=login', { method: 'POST', body: formData });
                         if (data.success) {
                             this.isLoggedIn = true;
+                            await this.getAuthStatus();
                             this.refreshData();
                             if (data.is_default_password) {
                                 setTimeout(() => {
@@ -1743,6 +2017,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	                        this.editConfig = JSON.parse(JSON.stringify(data.data.alipay));
 	                        this.normalizeConfig();
 	                        this.merchantInfo = data.data.merchant;
+	                        this.authStatus = Object.assign(this.authStatus, data.data.auth || {});
 	                        this.merchantInfo.admin_password = '';
 	                        this.showMerchantKey = false;
 	                        this.resetSettingsSnapshot();
