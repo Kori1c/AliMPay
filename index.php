@@ -1331,6 +1331,21 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                                 </div>
                                 <p class="rounded-2xl bg-slate-50/70 px-4 py-3 text-[11px] leading-5 text-slate-500 dark:bg-slate-900/40 dark:text-slate-300" x-text="systemHealth.summary">当前还没有启动自检记录。</p>
                             </div>
+                            <div class="space-y-4 border-t border-slate-200/60 pt-5 dark:border-slate-800/60">
+                                <div class="flex justify-between items-center text-sm">
+                                    <span class="metric-label text-slate-500 dark:text-slate-300 font-medium">当前版本</span>
+                                    <span class="font-bold text-slate-950 dark:text-white" x-text="systemInfo.version || 'unknown'">unknown</span>
+                                </div>
+                                <div class="flex justify-between items-center text-sm">
+                                    <span class="metric-label text-slate-500 dark:text-slate-300 font-medium">构建提交</span>
+                                    <span class="font-mono text-xs font-bold text-slate-950 dark:text-white" x-text="shortCommit">unknown</span>
+                                </div>
+                                <button @click="downloadDiagnostics()"
+                                        class="w-full glass py-3 rounded-xl text-sm font-bold hover:bg-white/40 flex items-center justify-center space-x-2">
+                                    <i data-lucide="download" class="w-4 h-4"></i>
+                                    <span>导出诊断信息</span>
+                                </button>
+                            </div>
                         </div>
                         <div class="glass p-8 rounded-3xl md:col-span-2 flex flex-col h-[600px]">
                             <div class="flex items-center justify-between mb-6">
@@ -1406,6 +1421,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                 alipayTestResults: [],
                 showAlipayTestPopover: false,
                 health: {},
+                systemInfo: { version: 'unknown', commit: 'unknown', build_time: 'unknown' },
                 healthSnapshot: { status: 'unknown', services: {}, counters: {}, suggestions: [] },
                 selfCheck: { status: 'unknown', summary: '', checked_at: null, counts: {} },
                 lastSelfCheckAlertKey: '',
@@ -1620,6 +1636,11 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
 	                        alipayLabel: this.systemAlipayText(alipayStatus),
 	                        summary: this.selfCheck.summary || '当前还没有启动自检记录。'
 	                    };
+	                },
+
+	                get shortCommit() {
+	                    const commit = this.systemInfo.commit || 'unknown';
+	                    return commit === 'unknown' ? commit : commit.slice(0, 12);
 	                },
 
 	                healthStateText(status) {
@@ -1952,7 +1973,7 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                         if (this.activeTab === 'dashboard') await this.getStats();
                         if (this.activeTab === 'orders') await this.getOrders(1);
                         if (this.activeTab === 'settings') { await this.getConfig(); await this.getQrCode(); }
-                        if (this.activeTab === 'system') await this.getLogs();
+                        if (this.activeTab === 'system') { await this.getLogs(); await this.getSystemInfo(); }
                         await this.getHealth();
                         this.$nextTick(() => lucide.createIcons());
                     } finally {
@@ -2316,6 +2337,19 @@ $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'
                 async getLogs() {
                     const { data } = await this.apiRequest(`admin_api.php?action=get_logs&type=${this.logType}`);
                     if (data.success) this.logs = data.data;
+                },
+
+                async getSystemInfo() {
+                    try {
+                        const { data } = await this.apiRequest('admin_api.php?action=get_system_info');
+                        if (data.success && data.data) {
+                            this.systemInfo = Object.assign(this.systemInfo, data.data);
+                        }
+                    } catch (e) {}
+                },
+
+                downloadDiagnostics() {
+                    window.open('admin_api.php?action=download_diagnostics', '_blank', 'noopener');
                 },
 
                 async triggerMonitor() {

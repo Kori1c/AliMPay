@@ -67,6 +67,7 @@ class CodePay
     {
         if (file_exists($this->configFile)) {
             $config = json_decode(file_get_contents($this->configFile), true);
+            $config = $this->migrateMerchantConfig(is_array($config) ? $config : []);
             $this->merchantId = $config['merchant_id'];
             $this->merchantKey = $config['merchant_key'];
             $this->logger->info('Loaded existing merchant configuration', ['merchant_id' => $this->merchantId]);
@@ -83,6 +84,7 @@ class CodePay
                 'rate' => '96',
                 'admin_password_hash' => password_hash('admin', PASSWORD_DEFAULT),
                 'admin_password_is_default' => true,
+                'schema_version' => 2,
                 'auth' => [
                     'password_login_enabled' => true,
                     'passkeys' => []
@@ -95,6 +97,65 @@ class CodePay
 
         // Initialize database
         $this->initializeDatabase();
+    }
+
+    private function migrateMerchantConfig(array $config): array
+    {
+        $changed = false;
+
+        if (empty($config['merchant_id']) || empty($config['merchant_key'])) {
+            $config['merchant_id'] = $config['merchant_id'] ?? ('1001' . str_pad((string)random_int(0, 999999999999), 12, '0', STR_PAD_LEFT));
+            $config['merchant_key'] = $config['merchant_key'] ?? bin2hex(random_bytes(16));
+            $changed = true;
+        }
+
+        if (empty($config['created_at'])) {
+            $config['created_at'] = date('Y-m-d H:i:s');
+            $changed = true;
+        }
+        if (!array_key_exists('status', $config)) {
+            $config['status'] = 1;
+            $changed = true;
+        }
+        if (!array_key_exists('rate', $config)) {
+            $config['rate'] = '96';
+            $changed = true;
+        }
+        if (empty($config['admin_password_hash']) && isset($config['admin_password'])) {
+            $config['admin_password_hash'] = password_hash((string)$config['admin_password'], PASSWORD_DEFAULT);
+            $config['admin_password_is_default'] = hash_equals((string)$config['admin_password'], 'admin');
+            unset($config['admin_password']);
+            $changed = true;
+        }
+        if (empty($config['admin_password_hash'])) {
+            $config['admin_password_hash'] = password_hash('admin', PASSWORD_DEFAULT);
+            $config['admin_password_is_default'] = true;
+            $changed = true;
+        }
+
+        $auth = is_array($config['auth'] ?? null) ? $config['auth'] : [];
+        if (!array_key_exists('password_login_enabled', $auth)) {
+            $auth['password_login_enabled'] = true;
+            $changed = true;
+        }
+        if (!isset($auth['passkeys']) || !is_array($auth['passkeys'])) {
+            $auth['passkeys'] = [];
+            $changed = true;
+        }
+        $config['auth'] = $auth;
+
+        if ((int)($config['schema_version'] ?? 0) < 2) {
+            $config['schema_version'] = 2;
+            $changed = true;
+        }
+
+        if ($changed) {
+            file_put_contents($this->configFile, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+            @chmod($this->configFile, 0640);
+            $this->logger->info('Merchant configuration migrated.', ['schema_version' => $config['schema_version']]);
+        }
+
+        return $config;
     }
 
     private function initializeDatabase()

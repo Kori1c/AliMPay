@@ -31,6 +31,14 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
 RUN a2enmod rewrite headers \
     && sed -ri 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf
 
+ARG ALIMPAY_VERSION=dev
+ARG ALIMPAY_COMMIT=unknown
+ARG ALIMPAY_BUILD_TIME=unknown
+
+ENV ALIMPAY_VERSION=${ALIMPAY_VERSION}
+ENV ALIMPAY_COMMIT=${ALIMPAY_COMMIT}
+ENV ALIMPAY_BUILD_TIME=${ALIMPAY_BUILD_TIME}
+
 WORKDIR /var/www/html
 
 # Copy project files and Composer dependencies

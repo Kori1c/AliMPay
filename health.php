@@ -6,6 +6,7 @@ use AliMPay\Utils\Logger;
 use AliMPay\Core\AlipayClient;
 use AliMPay\Core\BillQuery;
 use AliMPay\Core\PaymentMonitor;
+use AliMPay\Core\AppInfo;
 
 // 设置北京时间
 date_default_timezone_set('Asia/Shanghai');
@@ -94,6 +95,7 @@ function checkSystemStatus() {
     $status = [
         'timestamp' => date('Y-m-d H:i:s'),
         'system' => 'CodePay Container Monitor',
+        'app' => AppInfo::get(),
         'status' => 'ok',
         'services' => [],
         'counters' => [],
