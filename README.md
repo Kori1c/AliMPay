@@ -266,6 +266,27 @@ AliMPay 支持两种收款模式：
 - 关闭密码登录前请保留至少一个可用 Passkey，避免无法进入后台
 - 建议定期导出备份
 
+### Passkey 登录恢复
+
+如果你开启纯 Passkey 模式后更换设备、浏览器或域名，导致无法进入后台，可以在服务器命令行恢复密码登录：
+
+```bash
+docker compose exec -T alimpay php /var/www/html/scripts/reset-admin-auth.php --password=新的后台密码
+```
+
+如果需要同时清空已注册的 Passkey：
+
+```bash
+docker compose exec -T alimpay php /var/www/html/scripts/reset-admin-auth.php --password=新的后台密码 --clear-passkeys
+```
+
+恢复后请重新登录后台，确认 Passkey 可用后再关闭密码登录。
+
+### 隐私提醒
+
+- 支付二维码只在本地生成，不会把支付链接发送给第三方二维码服务
+- `notify.php` 是保留路径，默认不可作为线上测试页面使用
+
 ## License
 
 MIT

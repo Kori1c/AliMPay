@@ -10,7 +10,7 @@ Options -Indexes
     RewriteRule (^|/)(composer\.(json|lock)|\.env.*|login_attempts\.json)$ - [F,L]
     RewriteRule \.(db|sqlite|sqlite3|log|lock)$ - [F,L]
     # Block sensitive scripts from direct public access
-    RewriteRule ^(fix_database|notify)\.php$ - [F,L]
+    RewriteRule ^fix_database\.php$ - [F,L]
 </IfModule>
 
 <IfModule mod_headers.c>

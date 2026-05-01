@@ -5,8 +5,8 @@ namespace AliMPay\Utils;
 use Endroid\QrCode\Builder\Builder;
 use Endroid\QrCode\Writer\PngWriter;
 use Endroid\QrCode\Encoding\Encoding;
-use Endroid\QrCode\ErrorCorrectionLevel\ErrorCorrectionLevelHigh;
-use Endroid\QrCode\RoundBlockSizeMode\RoundBlockSizeModeMargin;
+use Endroid\QrCode\ErrorCorrectionLevel;
+use Endroid\QrCode\RoundBlockSizeMode;
 use AliMPay\Utils\Logger;
 
 class QRCodeGenerator
@@ -59,14 +59,11 @@ class QRCodeGenerator
                 $savePath = $qrCodeDir . '/' . $fileName;
             }
             
-            // Try to use local QR code generation first
-            if ($this->isGDAvailable()) {
-                return $this->generateQRCodeLocal($transferUrl, $savePath, $size);
-            } else {
-                // Fallback to online QR code generation
-                $this->logger->warning('GD extension not available, using online QR code generation');
-                return $this->generateQRCodeOnline($transferUrl, $savePath, $size);
+            if (!$this->isGDAvailable()) {
+                throw new \Exception('GD extension is required for local QR code generation');
             }
+
+            return $this->generateQRCodeLocal($transferUrl, $savePath, $size);
             
         } catch (\Exception $e) {
             $this->logger->error('Failed to generate QR code', [
@@ -74,13 +71,7 @@ class QRCodeGenerator
                 'url' => $transferUrl
             ]);
             
-            // Try online generation as fallback
-            try {
-                $this->logger->info('Trying online QR code generation as fallback');
-                return $this->generateQRCodeOnline($transferUrl, $savePath, $size);
-            } catch (\Exception $onlineError) {
-                throw new \Exception('QR code generation failed: ' . $e->getMessage() . ' (Online fallback also failed: ' . $onlineError->getMessage() . ')');
-            }
+            throw new \Exception('QR code generation failed: ' . $e->getMessage());
         }
     }
     
@@ -99,10 +90,10 @@ class QRCodeGenerator
             ->writer(new PngWriter())
             ->data($transferUrl)
             ->encoding(new Encoding('UTF-8'))
-            ->errorCorrectionLevel(new ErrorCorrectionLevelHigh())
+            ->errorCorrectionLevel(ErrorCorrectionLevel::High)
             ->size($size)
             ->margin(10)
-            ->roundBlockSizeMode(new RoundBlockSizeModeMargin())
+            ->roundBlockSizeMode(RoundBlockSizeMode::Margin)
             ->build();
         
         // Save QR code
@@ -118,44 +109,6 @@ class QRCodeGenerator
     }
     
     /**
-     * Generate QR code using online API
-     * 
-     * @param string $transferUrl
-     * @param string $savePath
-     * @param int $size
-     * @return string
-     */
-    private function generateQRCodeOnline(string $transferUrl, string $savePath, int $size): string
-    {
-        // URL encode the transfer URL
-        $encodedUrl = urlencode($transferUrl);
-        
-        // Use QR Server API (free service)
-        $qrApiUrl = "https://api.qrserver.com/v1/create-qr-code/?size={$size}x{$size}&data={$encodedUrl}";
-        
-        // Download QR code image
-        $qrImageData = file_get_contents($qrApiUrl);
-        
-        if ($qrImageData === false) {
-            throw new \Exception('Failed to download QR code from online service');
-        }
-        
-        // Save QR code to file
-        if (file_put_contents($savePath, $qrImageData) === false) {
-            throw new \Exception('Failed to save QR code to file');
-        }
-        
-        $this->logger->info('QR code generated successfully (online)', [
-            'url' => $transferUrl,
-            'file_path' => $savePath,
-            'size' => $size,
-            'api_url' => $qrApiUrl
-        ]);
-        
-        return $savePath;
-    }
-    
-    /**
      * Generate base64 encoded QR code
      * 
      * @param string $transferUrl
@@ -165,33 +118,22 @@ class QRCodeGenerator
     public function generateQRCodeBase64(string $transferUrl, int $size = 300): string
     {
         try {
-            // Try local generation first
-            if ($this->isGDAvailable()) {
-                $result = Builder::create()
-                    ->writer(new PngWriter())
-                    ->data($transferUrl)
-                    ->encoding(new Encoding('UTF-8'))
-                    ->errorCorrectionLevel(new ErrorCorrectionLevelHigh())
-                    ->size($size)
-                    ->margin(10)
-                    ->roundBlockSizeMode(new RoundBlockSizeModeMargin())
-                    ->build();
-                
-                return base64_encode($result->getString());
-            } else {
-                // Use online API for base64
-                $encodedUrl = urlencode($transferUrl);
-                $qrApiUrl = "https://api.qrserver.com/v1/create-qr-code/?size={$size}x{$size}&data={$encodedUrl}";
-                
-                $qrImageData = file_get_contents($qrApiUrl);
-                
-                if ($qrImageData === false) {
-                    throw new \Exception('Failed to download QR code from online service');
-                }
-                
-                return base64_encode($qrImageData);
+            if (!$this->isGDAvailable()) {
+                throw new \Exception('GD extension is required for local QR code generation');
             }
-            
+
+            $result = Builder::create()
+                ->writer(new PngWriter())
+                ->data($transferUrl)
+                ->encoding(new Encoding('UTF-8'))
+                ->errorCorrectionLevel(ErrorCorrectionLevel::High)
+                ->size($size)
+                ->margin(10)
+                ->roundBlockSizeMode(RoundBlockSizeMode::Margin)
+                ->build();
+
+            return base64_encode($result->getString());
+
         } catch (\Exception $e) {
             $this->logger->error('Failed to generate QR code base64', [
                 'error' => $e->getMessage(),
@@ -202,25 +144,9 @@ class QRCodeGenerator
         }
     }
     
-    /**
-     * Generate QR code URL (online only)
-     * 
-     * @param string $transferUrl
-     * @param int $size
-     * @return string QR code URL
-     */
     public function generateQRCodeUrl(string $transferUrl, int $size = 300): string
     {
-        $encodedUrl = urlencode($transferUrl);
-        $qrApiUrl = "https://api.qrserver.com/v1/create-qr-code/?size={$size}x{$size}&data={$encodedUrl}";
-        
-        $this->logger->info('QR code URL generated', [
-            'url' => $transferUrl,
-            'qr_url' => $qrApiUrl,
-            'size' => $size
-        ]);
-        
-        return $qrApiUrl;
+        throw new \Exception('Online QR code URL generation is disabled for privacy');
     }
 
     /**
